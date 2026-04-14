@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../common.sh
+source "$SCRIPT_DIR/../common.sh"
+
+log "checking policy harness expectations"
+
+[[ -f "$ROOT_DIR/SECURITY.md" ]] || die "SECURITY.md is missing"
+[[ -f "$ROOT_DIR/docs/openclaw-vault-manager-spec.md" ]] || die "product spec is missing"
+
+grep -q "OWS API token" "$ROOT_DIR/SECURITY.md" || die "security doc no longer states API-token-only model"
+grep -q "Executable OWS Policy" "$ROOT_DIR/SECURITY.md" || die "security doc no longer states executable OWS policy requirement"
+
+log "policy harness checks passed"

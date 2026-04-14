@@ -1,0 +1,47 @@
+# Agent Map
+
+This repository is being built for an agent-first workflow. Treat the repository, not chat history, as the system of record.
+
+## Start Here
+
+- Product scope: [docs/openclaw-vault-manager-spec.md](/Users/jinsuk/code/morpho-vault-manager/docs/openclaw-vault-manager-spec.md)
+- Architecture: [ARCHITECTURE.md](/Users/jinsuk/code/morpho-vault-manager/ARCHITECTURE.md)
+- Security invariants: [SECURITY.md](/Users/jinsuk/code/morpho-vault-manager/SECURITY.md)
+- Progress tracker: [progress.json](/Users/jinsuk/code/morpho-vault-manager/state/progress.json)
+- Active implementation plan: [bootstrap-harness.md](/Users/jinsuk/code/morpho-vault-manager/docs/exec-plans/active/bootstrap-harness.md)
+- Eval matrix: [vault-manager-evals.md](/Users/jinsuk/code/morpho-vault-manager/evals/vault-manager-evals.md)
+
+## Repository Rules
+
+- Keep the product narrow: Base-only, USDC-only, Morpho vault management only for v1.
+- Do not introduce a custom OpenClaw `AgentHarness` unless the architecture docs are updated first.
+- All signing and broadcasting must go through OWS. Never handle raw private keys in plugin code.
+- Never store owner credentials in repo files, plugin config, or agent prompts.
+- Morpho writes must follow `read -> prepare -> simulate -> policy check -> sign/send -> verify`.
+- If a script or test contradicts prose docs, fix the docs or the script so they match. Do not leave split-brain behavior.
+
+## Execution Discipline
+
+- Prefer editing docs, plans, scripts, and evals together when changing behavior.
+- Read `state/progress.json` before substantial work and update it when milestone status, blockers, or next actions change.
+- When you add a new capability, also add:
+  - the architectural note
+  - the security impact
+  - the script entrypoint or harness command
+  - the eval case
+- Keep files discoverable and named by domain, not by implementation detail.
+
+## Current Repo Shape
+
+- `docs/`: product and execution docs
+- `scripts/`: operator- and agent-facing entrypoints
+- `evals/`: deterministic acceptance scenarios and runbooks
+- `state/`: machine-readable progress and status tracking
+
+## What To Avoid
+
+- Large undocumented helpers
+- Hidden operator steps
+- Unbounded strategy logic
+- Silent fallbacks around policy denials or simulation failures
+- New product scope without updating the spec first

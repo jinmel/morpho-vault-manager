@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "project": "openclaw-vault-manager",
+  "lastUpdated": "2026-04-14",
+  "overallStatus": "in_progress",
+  "currentFocus": "plugin_package_scaffold",
+  "currentPlan": {
+    "id": "bootstrap-harness",
+    "path": "docs/exec-plans/active/bootstrap-harness.md",
+    "status": "completed"
+  },
+  "sourceOfTruth": {
+    "productSpec": "docs/openclaw-vault-manager-spec.md",
+    "architecture": "ARCHITECTURE.md",
+    "security": "SECURITY.md",
+    "agentMap": "AGENTS.md",
+    "evalMatrix": "evals/vault-manager-evals.md"
+  },
+  "milestones": [
+    {
+      "id": "product_spec",
+      "status": "completed",
+      "path": "docs/openclaw-vault-manager-spec.md",
+      "notes": "Native OpenClaw plugin direction, OWS security model, and cron-based periodic agent spec are documented."
+    },
+    {
+      "id": "harness_scaffold",
+      "status": "completed",
+      "path": "docs/exec-plans/active/bootstrap-harness.md",
+      "notes": "Repo-level guidance, script entrypoints, and initial eval matrix exist."
+    },
+    {
+      "id": "plugin_package_scaffold",
+      "status": "not_started",
+      "notes": "Need package.json, openclaw.plugin.json, index.ts, and first CLI registrar."
+    },
+    {
+      "id": "deterministic_dev_stack",
+      "status": "not_started",
+      "notes": "Need a reproducible OpenClaw + OWS + Morpho local environment."
+    },
+    {
+      "id": "ows_morpho_adapters",
+      "status": "not_started",
+      "notes": "Need real adapters for wallet, policy, reads, prepare, and sign/send flows."
+    },
+    {
+      "id": "end_to_end_eval_runner",
+      "status": "not_started",
+      "notes": "Current evals are documented, not yet executable end-to-end."
+    }
+  ],
+  "checks": [
+    {
+      "id": "policy_harness",
+      "path": "scripts/check/policy",
+      "status": "pass",
+      "notes": "Security and spec invariants are present in repository docs."
+    },
+    {
+      "id": "dev_up",
+      "path": "scripts/dev/up",
+      "status": "partial",
+      "notes": "Entry point works, but local environment reported missing openclaw and ows binaries."
+    },
+    {
+      "id": "dry_run_stub",
+      "path": "scripts/rebalance/dry-run",
+      "status": "pass_stub",
+      "notes": "Script runs and returns a stub payload; no real rebalance logic exists yet."
+    },
+    {
+      "id": "configure_preflight",
+      "path": "scripts/check/configure",
+      "status": "not_run",
+      "notes": "Blocked by missing openclaw and ows on PATH in the current environment."
+    },
+    {
+      "id": "cron_readiness",
+      "path": "scripts/check/cron",
+      "status": "not_run",
+      "notes": "Blocked by missing openclaw on PATH in the current environment."
+    }
+  ],
+  "blockers": [
+    {
+      "id": "local_dependencies_missing",
+      "status": "open",
+      "details": [
+        "openclaw is not available on PATH in the current environment",
+        "ows is not available on PATH in the current environment"
+      ]
+    }
+  ],
+  "nextActions": [
+    "Scaffold the native OpenClaw plugin package and first CLI registrar.",
+    "Decide the initial TypeScript runtime and package layout.",
+    "Add a deterministic local dev harness for OpenClaw, OWS, and Morpho tooling.",
+    "Convert documented evals into executable checks."
+  ]
+}

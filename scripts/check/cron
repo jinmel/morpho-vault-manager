@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../common.sh
+source "$SCRIPT_DIR/../common.sh"
+
+require_cmd openclaw
+
+log "checking OpenClaw cron readiness"
+
+if ! openclaw gateway status >/dev/null 2>&1; then
+  die "OpenClaw gateway is not reachable. Cron runs inside the gateway process, so periodic execution is not available."
+fi
+
+cat <<'EOF'
+Cron readiness check passed.
+
+Next checks to add:
+- daemonized gateway status
+- required agent existence
+- cron job existence and shape
+EOF

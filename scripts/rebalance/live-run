@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../common.sh
+source "$SCRIPT_DIR/../common.sh"
+
+ensure_tmp_dirs
+
+if [[ "${VAULT_MANAGER_ALLOW_LIVE:-0}" != "1" ]]; then
+  die "live execution is disabled. Set VAULT_MANAGER_ALLOW_LIVE=1 only in a controlled environment."
+fi
+
+cat <<'EOF'
+Live-run harness is not implemented yet.
+
+When implemented, this script must:
+- require an explicit arming control
+- reject simulation failures
+- reject policy denials
+- route all signing through OWS
+- emit auditable receipts without leaking secrets
+EOF
+
+exit 1
