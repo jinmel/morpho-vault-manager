@@ -25,6 +25,7 @@ This repository is being built for an agent-first workflow. Treat the repository
 
 - Prefer editing docs, plans, scripts, and evals together when changing behavior.
 - Read `state/progress.json` before substantial work and update it when milestone status, blockers, or next actions change.
+- When a task or milestone is completed, record that completion in `state/progress.json` before closing the work.
 - When you add a new capability, also add:
   - the architectural note
   - the security impact

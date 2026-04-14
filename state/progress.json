@@ -3,7 +3,7 @@
   "project": "openclaw-vault-manager",
   "lastUpdated": "2026-04-14",
   "overallStatus": "in_progress",
-  "currentFocus": "verification_and_local_stack",
+  "currentFocus": "spec_completion_gaps",
   "currentPlan": {
     "id": "bootstrap-harness",
     "path": "docs/exec-plans/active/bootstrap-harness.md",
@@ -43,6 +43,26 @@
       "id": "ows_morpho_adapters",
       "status": "completed",
       "notes": "OWS policy creation, OpenClaw agent/cron orchestration, Morpho reads, deterministic dry-run planning, and the current OWS-sign-plus-broadcast live wrapper are implemented. End-to-end live verification is still blocked by missing local binaries."
+    },
+    {
+      "id": "configure_flow_completion",
+      "status": "in_progress",
+      "notes": "Wallet setup, risk profile selection, policy generation, workspace generation, and cron setup are implemented. Funding guidance, model selection, and an in-wizard validation run are still missing."
+    },
+    {
+      "id": "secretref_or_secret_backing",
+      "status": "not_started",
+      "notes": "The current implementation uses env-var token provisioning only. The spec still calls for a stronger OpenClaw secret-backed or SecretRef-backed setup path if supported."
+    },
+    {
+      "id": "allocation_model_alignment",
+      "status": "in_progress",
+      "notes": "The current allocator enforces allowlists, TVL floors, concentration limits, turnover caps, and cash buffers. The fuller fee/reward-aware scoring model from the spec is not implemented yet."
+    },
+    {
+      "id": "distribution_and_install_path",
+      "status": "not_started",
+      "notes": "The package exists locally, but publish/install validation for npm and ClawHub has not been implemented or verified."
     },
     {
       "id": "end_to_end_eval_runner",
@@ -92,6 +112,36 @@
       "path": "scripts/check/cron",
       "status": "not_run",
       "notes": "Blocked by missing openclaw on PATH in the current environment."
+    },
+    {
+      "id": "configure_funding_guidance",
+      "path": "src/cli/configure.ts",
+      "status": "missing",
+      "notes": "The configure wizard does not yet guide funding with a continue-until-funded loop or polling step."
+    },
+    {
+      "id": "configure_model_selection",
+      "path": "src/cli/configure.ts",
+      "status": "missing",
+      "notes": "The configure wizard does not yet offer dedicated model selection or store model preferences for the vault-manager agent."
+    },
+    {
+      "id": "configure_validation_run",
+      "path": "src/cli/configure.ts",
+      "status": "missing",
+      "notes": "The configure wizard does not yet finish with a dry-run or optional live validation step inside the flow."
+    },
+    {
+      "id": "secret_backed_token_provisioning",
+      "path": "src/cli/configure.ts",
+      "status": "missing",
+      "notes": "Token provisioning is manual env injection only; no OpenClaw secret-backed setup path exists yet."
+    },
+    {
+      "id": "publish_install_validation",
+      "path": "package.json",
+      "status": "not_run",
+      "notes": "The package and plugin manifests exist, but install and distribution validation through npm or ClawHub has not been performed."
     }
   ],
   "blockers": [
@@ -105,9 +155,14 @@
     }
   ],
   "nextActions": [
+    "Complete the configure wizard with funding guidance, optional funding polling, and a final validation run.",
+    "Add model-selection support for the dedicated vault-manager agent if OpenClaw settings permit it.",
+    "Decide whether to implement OpenClaw secret-backed token provisioning or keep env-only token setup and narrow the spec accordingly.",
+    "Refine the allocation model toward the spec's fuller fee/reward-aware scoring rules.",
     "Add a deterministic local dev harness for OpenClaw, OWS, and Morpho tooling.",
     "Verify the live execution path end to end on a machine with openclaw and ows installed.",
     "Convert the documented eval matrix into executable end-to-end checks.",
-    "Add richer structured logs and metrics around rebalance phases and receipts."
+    "Add richer structured logs and metrics around rebalance phases and receipts.",
+    "Validate publish/install flow for npm and ClawHub."
   ]
 }
