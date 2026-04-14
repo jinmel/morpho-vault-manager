@@ -22,7 +22,7 @@ These evals define the minimum deterministic behavior expected from the reposito
 | `REB-004` | Simulation failure blocks execution | Morpho simulation returns failure | Live execution is aborted | `scripts/rebalance/live-run` |
 | `REB-005` | Policy denial blocks execution | Prepared tx violates policy | Live execution is aborted | `scripts/rebalance/live-run` |
 | `REB-006` | Live run requires explicit arming | Valid prepared tx but no arming flag | Script refuses to execute | `scripts/rebalance/live-run` |
-| `REB-007` | Allowed live execution succeeds | Valid prepared tx, successful simulation, arming enabled | Transaction(s) signed through OWS and receipts reported | future live harness |
+| `REB-007` | Allowed live execution succeeds | Valid prepared tx, successful simulation, arming enabled | Transaction(s) signed through OWS, broadcast on Base, and receipts reported | `scripts/rebalance/live-run` |
 | `OBS-001` | Run logging is auditable | Any dry-run or live-run | Logs include run id, phase, and final outcome without secrets | future structured logs |
 
 ## Promotion Rule

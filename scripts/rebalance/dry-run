@@ -8,24 +8,8 @@ source "$SCRIPT_DIR/../common.sh"
 
 ensure_tmp_dirs
 
-log "starting rebalance dry-run stub"
-log "expected future behavior:"
-log "1. load profile"
-log "2. read current wallet + Morpho state"
-log "3. compute target allocation"
-log "4. prepare transactions"
-log "5. verify simulation"
-log "6. return plan without signing"
+PROFILE_ID="${VAULT_MANAGER_PROFILE:-default}"
 
-cat <<'EOF'
-{
-  "mode": "dry-run",
-  "status": "stub",
-  "next": [
-    "load profile config",
-    "integrate OWS wallet lookup",
-    "integrate morpho-cli reads and prepare flows",
-    "return deterministic rebalance plan"
-  ]
-}
-EOF
+log "running rebalance dry-run for profile ${PROFILE_ID}"
+
+npx tsx "$ROOT_DIR/src/bin/rebalance.ts" dry-run --profile "$PROFILE_ID"

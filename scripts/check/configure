@@ -11,7 +11,7 @@ require_cmd openclaw
 require_cmd ows
 require_cmd bunx
 
-if ! bunx @morpho-org/cli health-check >/dev/null 2>&1; then
+if ! bunx --package @morpho-org/cli morpho health-check >/dev/null 2>&1; then
   die "morpho-cli health-check failed"
 fi
 

@@ -1,0 +1,61 @@
+{
+  "id": "morpho-vault-manager",
+  "name": "Morpho Vault Manager",
+  "description": "Onboard and operate a constrained Morpho vault manager agent on OpenClaw.",
+  "skills": [
+    "./skills"
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "profilePath": {
+        "type": "string",
+        "description": "Default profile path for the vault manager."
+      },
+      "workspaceRoot": {
+        "type": "string",
+        "description": "Root directory used for generated agent workspaces."
+      },
+      "owsCommand": {
+        "type": "string",
+        "description": "OWS CLI command name."
+      },
+      "openclawCommand": {
+        "type": "string",
+        "description": "OpenClaw CLI command name."
+      },
+      "morphoCliCommand": {
+        "type": "string",
+        "description": "Command used to run morpho-cli."
+      },
+      "baseRpcUrl": {
+        "type": "string",
+        "description": "Optional Base RPC URL used for receipt verification and live transaction broadcast."
+      },
+      "defaultChain": {
+        "type": "string",
+        "description": "Default Morpho chain slug.",
+        "enum": [
+          "base"
+        ]
+      },
+      "defaultCron": {
+        "type": "string",
+        "description": "Default cron expression for periodic rebalancing."
+      },
+      "defaultTimezone": {
+        "type": "string",
+        "description": "Default IANA timezone for cron schedules."
+      },
+      "defaultTokenEnvVar": {
+        "type": "string",
+        "description": "Environment variable name expected to hold the OWS API token."
+      },
+      "dryRunByDefault": {
+        "type": "boolean",
+        "description": "Whether live execution should remain opt-in."
+      }
+    }
+  }
+}

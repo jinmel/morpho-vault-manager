@@ -56,9 +56,10 @@ Responsibilities:
 - wallet lifecycle
 - API-key based agent access
 - policy enforcement
-- signing and broadcasting
+- signing
+- future `signAndSend` support when a documented CLI surface exists
 
-Current integration mode is local subprocess access. Future direct SDK or local daemon integration is optional.
+Current integration mode is local subprocess access. The current live wrapper signs through `ows sign tx` and then broadcasts through Base RPC because the documented OWS CLI reference does not currently document a `signAndSend` command. Future direct SDK or local daemon integration is optional.
 
 ### 4. Morpho Tooling
 
@@ -91,9 +92,9 @@ The initial assumption is `morpho-cli` plus vendored Morpho skill content.
 4. The agent computes target allocation and drift.
 5. If action is needed, it prepares transactions with Morpho tooling.
 6. The agent verifies simulation success and warnings.
-7. The execution path sends prepared transactions to OWS.
+7. The execution path serializes each prepared transaction, then sends it to OWS for policy-gated signing.
 8. OWS enforces policy before any token-backed decryption.
-9. Allowed transactions are signed and broadcast.
+9. The plugin wrapper broadcasts the signed transaction and waits for receipts.
 10. The run verifies outcomes and reports results.
 
 ## Repository Structure Targets
@@ -118,7 +119,7 @@ This is the intended direction for the repo:
     └── plugin implementation
 ```
 
-`src/` does not exist yet. The harness comes first.
+`src/` now contains the native plugin, CLI surfaces, and the first rebalance runtime implementation.
 
 ## Invariants
 
@@ -142,7 +143,7 @@ This is the intended direction for the repo:
 - wallet lookup
 - policy management
 - API key management
-- sign/send wrapper
+- sign wrapper plus broadcast/receipt verification
 
 ### Morpho Adapter
 

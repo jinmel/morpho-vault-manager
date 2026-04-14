@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$ROOT_DIR/.tmp"
 
 log() {
-  printf '[vault-manager] %s\n' "$*"
+  printf '[vault-manager] %s\n' "$*" >&2
 }
 
 die() {

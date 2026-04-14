@@ -189,7 +189,7 @@ That lets the agent use a stable protocol workflow:
 2. read current wallet positions
 3. prepare unsigned transactions
 4. inspect simulation output
-5. pass approved transactions to OWS for signing/broadcast
+5. pass approved transactions to OWS for signing, then broadcast with a constrained wrapper if the current OWS CLI surface only exposes signing
 
 ### 3. OWS integration model
 
@@ -207,7 +207,7 @@ The plugin should shell out to `ows` for:
 - wallet create/import/export guidance
 - policy creation
 - API key creation/revocation
-- sign / signAndSend
+- sign, and use `signAndSend` later if/when the CLI exposes a documented surface for it
 
 Phase 2 can add direct library bindings or a local OWS daemon if needed.
 
@@ -530,7 +530,7 @@ For each required move:
 1. prepare Morpho unsigned transactions
 2. inspect `simulation.allSucceeded`
 3. inspect warnings
-4. pass each transaction to OWS `signAndSend`
+4. pass each transaction to OWS for signing, then broadcast with the constrained wrapper if `signAndSend` is not available in the current CLI surface
 5. record receipts and summarize outcome
 
 If any simulation fails, the run should stop and report failure. No fallback heuristics that invent alternate transactions.

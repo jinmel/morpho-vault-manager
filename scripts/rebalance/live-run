@@ -12,15 +12,8 @@ if [[ "${VAULT_MANAGER_ALLOW_LIVE:-0}" != "1" ]]; then
   die "live execution is disabled. Set VAULT_MANAGER_ALLOW_LIVE=1 only in a controlled environment."
 fi
 
-cat <<'EOF'
-Live-run harness is not implemented yet.
+PROFILE_ID="${VAULT_MANAGER_PROFILE:-default}"
 
-When implemented, this script must:
-- require an explicit arming control
-- reject simulation failures
-- reject policy denials
-- route all signing through OWS
-- emit auditable receipts without leaking secrets
-EOF
+log "running live rebalance for profile ${PROFILE_ID}"
 
-exit 1
+npx tsx "$ROOT_DIR/src/bin/rebalance.ts" live --profile "$PROFILE_ID" --allow-live

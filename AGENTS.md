@@ -15,9 +15,10 @@ This repository is being built for an agent-first workflow. Treat the repository
 
 - Keep the product narrow: Base-only, USDC-only, Morpho vault management only for v1.
 - Do not introduce a custom OpenClaw `AgentHarness` unless the architecture docs are updated first.
-- All signing and broadcasting must go through OWS. Never handle raw private keys in plugin code.
+- All signing must go through OWS. Never handle raw private keys in plugin code.
+- The current live wrapper signs in OWS and broadcasts through Base RPC because the documented OWS CLI surface is `ows sign tx`, not a documented `signAndSend` command.
 - Never store owner credentials in repo files, plugin config, or agent prompts.
-- Morpho writes must follow `read -> prepare -> simulate -> policy check -> sign/send -> verify`.
+- Morpho writes must follow `read -> prepare -> simulate -> policy check -> OWS sign -> broadcast -> verify`.
 - If a script or test contradicts prose docs, fix the docs or the script so they match. Do not leave split-brain behavior.
 
 ## Execution Discipline
@@ -37,6 +38,7 @@ This repository is being built for an agent-first workflow. Treat the repository
 - `scripts/`: operator- and agent-facing entrypoints
 - `evals/`: deterministic acceptance scenarios and runbooks
 - `state/`: machine-readable progress and status tracking
+- `src/`: native plugin code, adapters, and rebalance runtime
 
 ## What To Avoid
 

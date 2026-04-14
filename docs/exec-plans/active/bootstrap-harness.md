@@ -46,30 +46,34 @@ This plan exists to ensure the repo becomes:
 - Harness scaffold docs created
 - Script entrypoint stubs created
 - Initial eval matrix created
+- Native plugin package scaffold created
+- Initial CLI implementation created
+- Profile state and workspace generation implemented
+- Real Morpho read/prepare dry-run engine implemented
+- Live execution wrapper implemented with OWS signing and Base RPC broadcast
+- Rebalance scripts now execute the real runtime instead of stubs
 
 ### Pending
 
-- Actual plugin package scaffold
 - Deterministic local dev stack
-- Real OWS and Morpho adapters
+- End-to-end live verification against installed `openclaw` and `ows`
 - Structured logs and metrics
 - End-to-end executable eval runner
 
 ## Next Implementation Step
 
-Create the first real plugin package scaffold with:
+Build the reproducible local and verification layer around the implemented runtime:
 
-- `package.json`
-- `openclaw.plugin.json`
-- `index.ts`
-- CLI command registrar
-- placeholder plugin config schema
+- deterministic OpenClaw + OWS + Morpho local environment
+- executable eval runner for dry-run and live-run scenarios
+- cron run verification in a real gateway process
+- richer structured logs and metrics
 
 ## Risks
 
-- The repo is still docs-first and script-stub-first, so implementation velocity is still limited.
-- No executable end-to-end environment exists yet.
-- Secret-management wiring is specified but not implemented.
+- No executable end-to-end environment exists yet for OpenClaw + OWS together.
+- Live execution has code coverage but not end-to-end validation in this machine because `openclaw` and `ows` are not installed.
+- Token provisioning still depends on operator-controlled environment setup.
 
 ## Success Criteria
 
@@ -79,3 +83,4 @@ This bootstrap plan is complete when a follow-up implementation plan can assume:
 - scripts provide stable entrypoints
 - eval cases are explicit and enumerable
 - future plugin code can target documented boundaries instead of chat instructions
+- the initial native plugin package scaffold already exists

@@ -1,0 +1,33 @@
+{
+  "name": "@morpho/openclaw-vault-manager",
+  "version": "0.1.0",
+  "description": "Native OpenClaw plugin for onboarding and running a Morpho vault manager agent.",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.4.12",
+      "minGatewayVersion": "2026.4.12"
+    },
+    "build": {
+      "openclawVersion": "2026.4.12",
+      "pluginSdkVersion": "2026.4.12"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "commander": "^14.0.1",
+    "openclaw": "2026.4.12",
+    "viem": "^2.38.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.2"
+  }
+}

@@ -22,6 +22,7 @@ We do not assume the prompt alone will prevent unsafe execution.
 - Every agent write path is subject to OWS policy enforcement before decryption.
 - Live execution is allowed only on Base for v1.
 - Live execution is allowed only for approved USDC Morpho vault operations for v1.
+- All live signatures must come from OWS.
 - Simulation failure aborts execution.
 - Policy denial aborts execution.
 
@@ -38,6 +39,12 @@ We do not assume the prompt alone will prevent unsafe execution.
 - Scoped to one wallet for v1
 - Attached to one or more policies
 - The only credential the agent may use
+
+### Broadcast Path
+
+- Current implementation uses OWS for policy-gated signing and Base RPC for broadcast plus receipt verification.
+- This does not widen secret access: the signing boundary remains inside OWS.
+- When the OWS CLI exposes a documented `signAndSend` surface, the plugin should move broadcast into OWS as well.
 
 ## Policy Layers
 
@@ -81,6 +88,7 @@ Required for v1:
   - asset scope
   - simulation result
   - policy result
+  - final receipt verification after broadcast
 
 ## Review Checklist
 
