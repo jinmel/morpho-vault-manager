@@ -20,7 +20,7 @@ export async function runCommand(
   args: string[],
   opts?: { cwd?: string; env?: NodeJS.ProcessEnv }
 ): Promise<CommandResult> {
-  return new Promise<CommandResult>((resolve, reject) => {
+  return new Promise<CommandResult>((resolve) => {
     const child = spawn(command, args, {
       cwd: opts?.cwd,
       env: opts?.env,
@@ -38,7 +38,13 @@ export async function runCommand(
       stderr += chunk.toString();
     });
 
-    child.on("error", reject);
+    child.on("error", (error) => {
+      resolve({
+        stdout,
+        stderr: stderr || (error as NodeJS.ErrnoException).message,
+        code: 127
+      });
+    });
     child.on("close", (code) => {
       resolve({
         stdout,

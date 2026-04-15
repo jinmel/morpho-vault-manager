@@ -16,8 +16,24 @@
       "pluginSdkVersion": "2026.4.12"
     }
   },
+  "files": [
+    "index.ts",
+    "openclaw.plugin.json",
+    "src/cli/**/*",
+    "src/lib/**/*",
+    "!src/lib/fixtures.ts",
+    "src/bin/rebalance.ts",
+    "skills/**/*",
+    "scripts/rebalance/**/*",
+    "scripts/common.sh",
+    "tsconfig.json",
+    "README.md",
+    "SECURITY.md",
+    "ARCHITECTURE.md"
+  ],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pack:dry-run": "npm pack --dry-run"
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",

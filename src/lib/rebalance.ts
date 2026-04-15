@@ -20,19 +20,52 @@ import {
   getMorphoVault,
   prepareMorphoDeposit,
   prepareMorphoWithdraw,
+  type MorphoPositionsResponse,
   type MorphoPreparedOperation,
   type MorphoPreparedWarning,
+  type MorphoTokenBalanceResponse,
   type MorphoUnsignedTransaction,
   type MorphoVaultDetail,
   type MorphoVaultPosition
 } from "./morpho.js";
 import { signTransactionWithOws } from "./ows.js";
 import { loadProfile } from "./profile.js";
+import { createRunLogger, runLogPathFor, type RunLogger } from "./run-logger.js";
+import { describeTokenSource, resolveApiToken } from "./secrets.js";
 import type { RiskPreset, VaultManagerProfile, VaultManagerSettings } from "./types.js";
 
 export type RebalanceMode = "dry-run" | "live";
 
 export type RebalanceStatus = "no_op" | "planned" | "executed" | "blocked";
+
+export type RebalanceReadDeps = {
+  getVault: (address: string) => Promise<MorphoVaultDetail>;
+  getPositions: (walletAddress: string) => Promise<MorphoPositionsResponse>;
+  getTokenBalance: (walletAddress: string) => Promise<MorphoTokenBalanceResponse>;
+  prepareDeposit: (
+    vaultAddress: string,
+    walletAddress: string,
+    amount: string
+  ) => Promise<MorphoPreparedOperation>;
+  prepareWithdraw: (
+    vaultAddress: string,
+    walletAddress: string,
+    amount: string
+  ) => Promise<MorphoPreparedOperation>;
+};
+
+function defaultReadDeps(settings: VaultManagerSettings, profile: VaultManagerProfile): RebalanceReadDeps {
+  return {
+    getVault: (address) => getMorphoVault(settings, profile.chain, address),
+    getPositions: (walletAddress) => getMorphoPositions(settings, profile.chain, walletAddress),
+    getTokenBalance: (walletAddress) =>
+      getMorphoTokenBalance(settings, profile.chain, profile.usdcAddress, walletAddress),
+    prepareDeposit: (vaultAddress, walletAddress, amount) =>
+      prepareMorphoDeposit(settings, profile.chain, vaultAddress, walletAddress, amount),
+    prepareWithdraw: (vaultAddress, walletAddress, amount) =>
+      prepareMorphoWithdraw(settings, profile.chain, vaultAddress, walletAddress, amount)
+  };
+}
 
 export type RebalanceAction = {
   kind: "deposit" | "withdraw";
@@ -71,10 +104,12 @@ export type RebalanceRunResult = {
   profileId: string;
   createdAt: string;
   receiptPath: string;
+  logPath: string;
   walletAddress: string;
   riskProfile: VaultManagerProfile["riskProfile"];
   tokenEnvVar: string;
-  tokenEnvVarPresent: boolean;
+  tokenSource: string;
+  tokenReady: boolean;
   reasons: string[];
   warnings: string[];
   metrics: {
@@ -91,8 +126,15 @@ export type RebalanceRunResult = {
       address: string;
       name: string;
       apyPct: string;
+      feePct: string;
       tvlUsd: string;
       score: string;
+      scoreBreakdown: {
+        apyTerm: string;
+        tvlTerm: string;
+        feeTerm: string;
+        rewardsPenaltyTerm: string;
+      };
     }>;
     rejected: Array<{
       address: string;
@@ -123,10 +165,18 @@ type CandidateVault = {
   apyPctRaw: string;
   tvlUsd: number;
   tvlUsdRaw: string;
+  feePct: number;
+  feePctRaw: string;
 };
 
 type RankedCandidate = CandidateVault & {
   score: number;
+  scoreBreakdown: {
+    apyTerm: number;
+    tvlTerm: number;
+    feeTerm: number;
+    rewardsPenaltyTerm: number;
+  };
 };
 
 type ActionDraft = {
@@ -183,7 +233,7 @@ function buildRankedCandidates(vaults: MorphoVaultDetail[], preset: RiskPreset):
   rejected: Array<{ address: string; reason: string }>;
 } {
   const rejected: Array<{ address: string; reason: string }> = [];
-  const ranked: RankedCandidate[] = [];
+  const eligible: CandidateVault[] = [];
 
   for (const vault of vaults) {
     if (vault.asset.symbol !== "USDC") {
@@ -201,18 +251,48 @@ function buildRankedCandidates(vaults: MorphoVaultDetail[], preset: RiskPreset):
     }
 
     const apyPct = Number(vault.apyPct);
-    const score = apyPct + Math.log10(Math.max(tvlUsd, 1)) / 10;
+    const feePct = Number(vault.feePct);
 
-    ranked.push({
+    eligible.push({
       address: vault.address,
       name: vault.name,
       apyPct: Number.isFinite(apyPct) ? apyPct : 0,
       apyPctRaw: vault.apyPct,
       tvlUsd,
       tvlUsdRaw: vault.tvlUsd,
-      score
+      feePct: Number.isFinite(feePct) ? feePct : 0,
+      feePctRaw: vault.feePct
     });
   }
+
+  const maxTvl = eligible.reduce((acc, vault) => (vault.tvlUsd > acc ? vault.tvlUsd : acc), 0);
+  const maxApy = eligible.reduce((acc, vault) => (vault.apyPct > acc ? vault.apyPct : acc), 0);
+  const rewardsPenaltyThreshold = maxApy > 0 ? maxApy * 0.75 : Infinity;
+
+  const ranked: RankedCandidate[] = eligible.map((candidate) => {
+    const normalizedTvl = maxTvl > 0 ? candidate.tvlUsd / maxTvl : 0;
+    const apyTerm = preset.scoreWeights.apy * candidate.apyPct;
+    const tvlTerm = preset.scoreWeights.tvl * normalizedTvl * 10;
+    const feeTerm = -preset.scoreWeights.fee * candidate.feePct;
+    const dislikesRewards = preset.rewardPreference === "ignore";
+    const rewardsPenaltyTerm =
+      dislikesRewards && candidate.apyPct >= rewardsPenaltyThreshold
+        ? -preset.scoreWeights.rewardsPenalty * (candidate.apyPct - rewardsPenaltyThreshold)
+        : 0;
+
+    const score = apyTerm + tvlTerm + feeTerm + rewardsPenaltyTerm;
+
+    return {
+      ...candidate,
+      score,
+      scoreBreakdown: {
+        apyTerm,
+        tvlTerm,
+        feeTerm,
+        rewardsPenaltyTerm
+      }
+    };
+  });
 
   ranked.sort((left, right) => {
     if (right.score !== left.score) return right.score - left.score;
@@ -402,9 +482,9 @@ function buildActionDrafts(params: {
 }
 
 async function prepareActionOperations(
-  settings: VaultManagerSettings,
   profile: VaultManagerProfile,
-  actions: ActionDraft[]
+  actions: ActionDraft[],
+  deps: RebalanceReadDeps
 ): Promise<RebalanceOperationResult[]> {
   const operations: RebalanceOperationResult[] = [];
 
@@ -414,20 +494,8 @@ async function prepareActionOperations(
     try {
       const prepared =
         action.kind === "deposit"
-          ? await prepareMorphoDeposit(
-              settings,
-              profile.chain,
-              action.vaultAddress,
-              profile.walletAddress,
-              amountUsdc
-            )
-          : await prepareMorphoWithdraw(
-              settings,
-              profile.chain,
-              action.vaultAddress,
-              profile.walletAddress,
-              amountUsdc
-            );
+          ? await deps.prepareDeposit(action.vaultAddress, profile.walletAddress, amountUsdc)
+          : await deps.prepareWithdraw(action.vaultAddress, profile.walletAddress, amountUsdc);
 
       operations.push(toOperationResult(action, prepared));
     } catch (error) {
@@ -501,6 +569,7 @@ async function executeOperations(params: {
   settings: VaultManagerSettings;
   profile: VaultManagerProfile;
   operations: RebalanceOperationResult[];
+  token: string;
 }): Promise<{ rpcUrl?: string; transactions: ExecutedTransactionReceipt[] }> {
   const transport = params.settings.baseRpcUrl ? http(params.settings.baseRpcUrl) : http();
   const publicClient = createPublicClient({
@@ -548,7 +617,7 @@ async function executeOperations(params: {
       const signResult = await signTransactionWithOws({
         settings: params.settings,
         walletRef: params.profile.walletRef,
-        tokenEnvVar: params.profile.tokenEnvVar,
+        token: params.token,
         chain: "base",
         unsignedTransactionHex
       });
@@ -628,16 +697,44 @@ function allocationRows(params: {
     .map(({ sortTarget: _, ...row }) => row);
 }
 
-export async function runRebalance(settings: VaultManagerSettings, profileId: string, mode: RebalanceMode): Promise<RebalanceRunResult> {
+export async function runRebalance(
+  settings: VaultManagerSettings,
+  profileId: string,
+  mode: RebalanceMode,
+  overrideDeps?: RebalanceReadDeps
+): Promise<RebalanceRunResult> {
   const loaded = await loadProfile(settings, profileId);
   const profile = loaded.profile;
   if (!profile) {
     throw new Error(`Profile ${profileId} does not exist.`);
   }
 
+  const deps = overrideDeps ?? defaultReadDeps(settings, profile);
+
   const runId = randomUUID();
   const createdAt = new Date().toISOString();
   const receiptPath = receiptPathForRun(settings, profile.profileId, runId);
+  const logPath = runLogPathFor(settings, profile.profileId, runId);
+  const logger = await createRunLogger({
+    settings,
+    profileId: profile.profileId,
+    runId,
+    mode
+  });
+  const tokenSource = profile.tokenSource ?? settings.defaultTokenSource;
+  const tokenSourceDescription = describeTokenSource(tokenSource);
+  const tokenReadyProbe = await resolveApiToken(tokenSource);
+  const tokenReady = tokenReadyProbe.ok;
+
+  await logger.event("start", "Rebalance run started", {
+    mode,
+    walletAddress: profile.walletAddress,
+    chain: profile.chain,
+    riskProfile: profile.riskProfile,
+    allowedVaults: profile.allowedVaults.length,
+    logPath
+  });
+
   const normalizedAllowedVaults = profile.allowedVaults.map((address) => getAddress(address));
   const allowedVaultSet = new Set(normalizedAllowedVaults);
   const reasons: string[] = [];
@@ -648,6 +745,9 @@ export async function runRebalance(settings: VaultManagerSettings, profileId: st
   };
 
   if (profile.allowedVaults.length === 0) {
+    await logger.event("complete", "No vault allowlist configured; returning no-op", {
+      status: "no_op"
+    });
     const result: RebalanceRunResult = {
       runId,
       mode,
@@ -655,10 +755,12 @@ export async function runRebalance(settings: VaultManagerSettings, profileId: st
       profileId: profile.profileId,
       createdAt,
       receiptPath,
+      logPath,
       walletAddress: profile.walletAddress,
       riskProfile: profile.riskProfile,
       tokenEnvVar: profile.tokenEnvVar,
-      tokenEnvVarPresent: Boolean(process.env[profile.tokenEnvVar]),
+      tokenSource: tokenSourceDescription,
+      tokenReady,
       reasons: ["No approved vault allowlist is configured for this profile."],
       warnings,
       metrics: {
@@ -684,11 +786,16 @@ export async function runRebalance(settings: VaultManagerSettings, profileId: st
     };
 
     await persistRunReceipt(result);
+    await logger.close();
     return result;
   }
 
+  await logger.event("read", "Fetching live Morpho state", {
+    allowedVaults: normalizedAllowedVaults.length
+  });
+
   const allowedVaultResults = await Promise.allSettled(
-    normalizedAllowedVaults.map((address) => getMorphoVault(settings, profile.chain, address))
+    normalizedAllowedVaults.map((address) => deps.getVault(address))
   );
 
   const liveVaults: MorphoVaultDetail[] = [];
@@ -719,13 +826,8 @@ export async function runRebalance(settings: VaultManagerSettings, profileId: st
       }))
   );
 
-  const positionsResponse = await getMorphoPositions(settings, profile.chain, profile.walletAddress);
-  const tokenBalance = await getMorphoTokenBalance(
-    settings,
-    profile.chain,
-    profile.usdcAddress,
-    profile.walletAddress
-  );
+  const positionsResponse = await deps.getPositions(profile.walletAddress);
+  const tokenBalance = await deps.getTokenBalance(profile.walletAddress);
 
   const managedPositions = positionsResponse.vaultPositions.filter((position) =>
     allowedVaultSet.has(getAddress(position.vault.address))
@@ -780,6 +882,16 @@ export async function runRebalance(settings: VaultManagerSettings, profileId: st
     reasons.push("The computed action set rounded down to zero after turnover and minimum-size checks.");
   }
 
+  await logger.event("plan", "Computed target allocation", {
+    totalManagedUsdc: formatUsdc(totalManaged),
+    idleUsdc: formatUsdc(idleUsdc),
+    targetCashBufferUsdc: formatUsdc(targetIdle),
+    driftExceeded: drift.exceeded,
+    maxObservedDriftPct: drift.maxObservedPct,
+    selectedVaults: selected.map((vault) => vault.address),
+    actionCount: actions.length
+  });
+
   const actionResults = actions.map<RebalanceAction>((action) => ({
     kind: action.kind,
     vaultAddress: action.vaultAddress,
@@ -794,7 +906,10 @@ export async function runRebalance(settings: VaultManagerSettings, profileId: st
   let status: RebalanceStatus = reasons.length > 0 ? "no_op" : "planned";
 
   if (status === "planned") {
-    operations = await prepareActionOperations(settings, profile, actions);
+    await logger.event("prepare", "Preparing Morpho transactions", {
+      actionCount: actions.length
+    });
+    operations = await prepareActionOperations(profile, actions, deps);
     const failedOperation = operations.find((operation) => !operation.simulationOk || Boolean(operation.error));
     if (failedOperation) {
       status = "blocked";
@@ -802,26 +917,53 @@ export async function runRebalance(settings: VaultManagerSettings, profileId: st
         failedOperation.error ??
           `Simulation failed for ${failedOperation.kind} ${failedOperation.amountUsdc} USDC on ${failedOperation.vaultAddress}.`
       );
+      await logger.event("error", "Preparation or simulation failed", {
+        vaultAddress: failedOperation.vaultAddress,
+        kind: failedOperation.kind,
+        error: failedOperation.error ?? null
+      });
+    } else {
+      await logger.event("prepare", "All prepared operations simulated successfully", {
+        operationCount: operations.length
+      });
     }
   }
 
   if (mode === "live" && status === "planned") {
-    if (!process.env[profile.tokenEnvVar]) {
+    const source = profile.tokenSource ?? settings.defaultTokenSource;
+    const resolution = await resolveApiToken(source);
+
+    if (!resolution.ok) {
       status = "blocked";
-      reasons.push(`Missing required token environment variable ${profile.tokenEnvVar}.`);
+      reasons.push(`Failed to resolve OWS API token (${resolution.description}): ${resolution.error}`);
+      await logger.event("error", "Live execution blocked: token resolution failed", {
+        tokenSource: describeTokenSource(source)
+      });
     } else {
       try {
+        await logger.event("execute", "Signing and broadcasting transactions", {
+          operationCount: operations.length,
+          tokenSource: resolution.description
+        });
         const liveExecution = await executeOperations({
           settings,
           profile,
-          operations
+          operations,
+          token: resolution.value
         });
         execution.rpcUrl = liveExecution.rpcUrl;
         execution.transactions = liveExecution.transactions;
         status = "executed";
+        await logger.event("verify", "Transactions confirmed", {
+          transactionCount: liveExecution.transactions.length,
+          hashes: liveExecution.transactions.map((tx) => tx.hash)
+        });
       } catch (error) {
         status = "blocked";
         reasons.push((error as Error).message);
+        await logger.event("error", "Live execution failed", {
+          error: (error as Error).message
+        });
       }
     }
   }
@@ -833,10 +975,12 @@ export async function runRebalance(settings: VaultManagerSettings, profileId: st
     profileId: profile.profileId,
     createdAt,
     receiptPath,
+    logPath,
     walletAddress: profile.walletAddress,
     riskProfile: profile.riskProfile,
     tokenEnvVar: profile.tokenEnvVar,
-    tokenEnvVarPresent: Boolean(process.env[profile.tokenEnvVar]),
+    tokenSource: tokenSourceDescription,
+    tokenReady,
     reasons,
     warnings: [
       ...warnings,
@@ -858,8 +1002,15 @@ export async function runRebalance(settings: VaultManagerSettings, profileId: st
         address: vault.address,
         name: vault.name,
         apyPct: vault.apyPctRaw,
+        feePct: vault.feePctRaw,
         tvlUsd: vault.tvlUsdRaw,
-        score: vault.score.toFixed(4)
+        score: vault.score.toFixed(4),
+        scoreBreakdown: {
+          apyTerm: vault.scoreBreakdown.apyTerm.toFixed(4),
+          tvlTerm: vault.scoreBreakdown.tvlTerm.toFixed(4),
+          feeTerm: vault.scoreBreakdown.feeTerm.toFixed(4),
+          rewardsPenaltyTerm: vault.scoreBreakdown.rewardsPenaltyTerm.toFixed(4)
+        }
       })),
       rejected: rejectedVaults
     },
@@ -875,6 +1026,13 @@ export async function runRebalance(settings: VaultManagerSettings, profileId: st
   };
 
   await persistRunReceipt(result);
+  await logger.event("complete", "Rebalance run complete", {
+    status,
+    actionCount: result.actions.length,
+    executedTransactionCount: result.execution.transactions.length,
+    receiptPath: result.receiptPath
+  });
+  await logger.close();
   return result;
 }
 

@@ -1,3 +1,5 @@
+import type { TokenSource } from "./secrets.js";
+
 export type RiskProfileId = "conservative" | "balanced" | "aggressive";
 
 export type VaultManagerSettings = {
@@ -13,6 +15,7 @@ export type VaultManagerSettings = {
   defaultCron: string;
   defaultTimezone: string;
   defaultTokenEnvVar: string;
+  defaultTokenSource: TokenSource;
   baseAgentId: string;
   baseCronName: string;
   dryRunByDefault: boolean;
@@ -29,6 +32,12 @@ export type RiskPreset = {
   cashBufferUsd: number;
   minimumVaultTvlUsd: number;
   rewardPreference: "ignore" | "neutral" | "include";
+  scoreWeights: {
+    apy: number;
+    tvl: number;
+    fee: number;
+    rewardsPenalty: number;
+  };
 };
 
 export type VaultManagerProfile = {
@@ -41,6 +50,7 @@ export type VaultManagerProfile = {
   allowedVaults: string[];
   allowedSpenders: string[];
   tokenEnvVar: string;
+  tokenSource?: TokenSource;
   usdcAddress: string;
   policyId: string;
   policyFile: string;
@@ -57,6 +67,16 @@ export type VaultManagerProfile = {
   updatedAt: string;
   notes?: string;
   riskPreset: RiskPreset;
+  modelPreference?: string;
+  armedForLiveExecution?: boolean;
+  lastFundedCheckAt?: string;
+  lastFundedUsdc?: string;
+  lastValidationRun?: {
+    runId: string;
+    status: string;
+    receiptPath: string;
+    createdAt: string;
+  };
 };
 
 export type ConfigureResult = {

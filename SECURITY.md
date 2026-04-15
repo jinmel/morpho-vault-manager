@@ -76,8 +76,9 @@ Required for v1:
 
 - Do not commit secrets to the repo.
 - Do not write owner credentials into OpenClaw prompts or workspace files.
-- API tokens should be stored via OpenClaw secret or env-backed configuration, not plaintext profile JSON.
-- Profile files may contain public addresses, wallet IDs, vault allowlists, thresholds, and cron metadata.
+- API tokens must be resolved through the configured token source (`env` or `file`), never hardcoded in profile JSON or plugin config.
+- `file` sources are intended for mounted-secret setups (Docker/k8s/systemd EnvironmentFile). File contents are read at execution time and never copied into the profile.
+- Profile files may contain public addresses, wallet IDs, vault allowlists, thresholds, cron metadata, and the token source descriptor (kind + identifier), never the token value itself.
 
 ## Execution Guardrails
 

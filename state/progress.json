@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "project": "openclaw-vault-manager",
-  "lastUpdated": "2026-04-14",
-  "overallStatus": "in_progress",
-  "currentFocus": "spec_completion_gaps",
+  "lastUpdated": "2026-04-15",
+  "overallStatus": "ready_for_review",
+  "currentFocus": "live_path_verification_complete",
   "currentPlan": {
     "id": "bootstrap-harness",
     "path": "docs/exec-plans/active/bootstrap-harness.md",
@@ -36,38 +36,43 @@
     },
     {
       "id": "deterministic_dev_stack",
-      "status": "not_started",
-      "notes": "Need a reproducible OpenClaw + OWS + Morpho local environment."
+      "status": "completed",
+      "notes": "scripts/dev/sandbox creates an isolated data root, materializes a fixture profile, runs runRebalance against canned Morpho data (planned/no-op/blocked scenarios), and cleans up on exit. scripts/dev/doctor exercises the planned scenario as a probe."
     },
     {
       "id": "ows_morpho_adapters",
       "status": "completed",
-      "notes": "OWS policy creation, OpenClaw agent/cron orchestration, Morpho reads, deterministic dry-run planning, and the current OWS-sign-plus-broadcast live wrapper are implemented. End-to-end live verification is still blocked by missing local binaries."
+      "notes": "OWS policy creation, OpenClaw agent/cron orchestration, Morpho reads, deterministic dry-run planning, and the OWS-sign-plus-broadcast live wrapper are implemented. Morpho adapter rewritten to match real v2026.4 @morpho-org/cli shapes; live read path verified end-to-end via scripts/check/live-path."
     },
     {
       "id": "configure_flow_completion",
-      "status": "in_progress",
-      "notes": "Wallet setup, risk profile selection, policy generation, workspace generation, and cron setup are implemented. Funding guidance, model selection, and an in-wizard validation run are still missing."
+      "status": "completed",
+      "notes": "Wallet setup, risk profile selection, policy generation, funding guidance with balance polling, optional model-preference routing, workspace generation, cron setup, and a final in-wizard validation dry-run are all implemented."
     },
     {
       "id": "secretref_or_secret_backing",
-      "status": "not_started",
-      "notes": "The current implementation uses env-var token provisioning only. The spec still calls for a stronger OpenClaw secret-backed or SecretRef-backed setup path if supported."
+      "status": "completed",
+      "notes": "Plugin register phase uses OpenClaw's normalizeResolvedSecretInputString to detect pre-resolved SecretRefs (via apiKeyValue) and register an inline token source. Env and file SecretRef shapes also map into our native env/file resolvers. SEC-001 eval exercises the inline + env + file pathways."
     },
     {
       "id": "allocation_model_alignment",
-      "status": "in_progress",
-      "notes": "The current allocator enforces allowlists, TVL floors, concentration limits, turnover caps, and cash buffers. The fuller fee/reward-aware scoring model from the spec is not implemented yet."
+      "status": "completed",
+      "notes": "Scoring now applies per-profile weights for APY, normalized TVL, fee percentage, and a rewards penalty for reward-averse profiles. The breakdown is persisted on each selected vault in the run receipt."
     },
     {
       "id": "distribution_and_install_path",
-      "status": "not_started",
-      "notes": "The package exists locally, but publish/install validation for npm and ClawHub has not been implemented or verified."
+      "status": "completed",
+      "notes": "package.json now declares a files allowlist that excludes state/progress.json, evals/, docs/, src/bin/evals|doctor, and dev scripts. scripts/check/publish runs npm pack --dry-run and enforces required + forbidden entries. scripts/dev/doctor surfaces the same check."
     },
     {
       "id": "end_to_end_eval_runner",
-      "status": "not_started",
-      "notes": "Current evals are documented, not yet executable end-to-end."
+      "status": "completed",
+      "notes": "CFG-001/002, WAL-001, CRN-001/002, REB-001..REB-004, OBS-001, POL-002, and POL-003 are all executable via scripts/check/evals. POL-001 remains an operator-visible confirmation (no extractable in-process assertion)."
+    },
+    {
+      "id": "structured_run_logging",
+      "status": "completed",
+      "notes": "runRebalance emits JSONL phase events (start/read/plan/prepare/execute/verify/complete/error) via src/lib/run-logger.ts with secret redaction. The result now carries logPath alongside receiptPath."
     }
   ],
   "checks": [
@@ -80,8 +85,14 @@
     {
       "id": "dev_up",
       "path": "scripts/dev/up",
-      "status": "partial",
-      "notes": "Entry point works, but local environment reported missing openclaw and ows binaries."
+      "status": "pass",
+      "notes": "scripts/dev/up now delegates to scripts/dev/doctor, which probes tool availability, typecheck, evals, and token source. Current environment reports openclaw and ows on PATH."
+    },
+    {
+      "id": "dev_doctor",
+      "path": "scripts/dev/doctor",
+      "status": "pass",
+      "notes": "Produces stable text/JSON health summary. Exits non-zero on fail; warnings like unset default token env var are reported without failing the run."
     },
     {
       "id": "dry_run_engine",
@@ -94,6 +105,12 @@
       "path": "scripts/rebalance/live-run",
       "status": "pass",
       "notes": "Script refuses live execution unless VAULT_MANAGER_ALLOW_LIVE=1 is set."
+    },
+    {
+      "id": "eval_runner",
+      "path": "scripts/check/evals",
+      "status": "pass",
+      "notes": "Fixture-driven scenarios REB-001 through REB-004 execute against runRebalance with injected Morpho read deps and pass in CI."
     },
     {
       "id": "plugin_typecheck",
@@ -116,53 +133,98 @@
     {
       "id": "configure_funding_guidance",
       "path": "src/cli/configure.ts",
-      "status": "missing",
-      "notes": "The configure wizard does not yet guide funding with a continue-until-funded loop or polling step."
+      "status": "pass",
+      "notes": "The configure wizard now shows the wallet address, polls the USDC balance via Morpho reads, and persists the last funded-check probe onto the profile."
     },
     {
       "id": "configure_model_selection",
       "path": "src/cli/configure.ts",
-      "status": "missing",
-      "notes": "The configure wizard does not yet offer dedicated model selection or store model preferences for the vault-manager agent."
+      "status": "pass",
+      "notes": "Model preference flows end-to-end: captured in configure, stored on the profile, written into AGENTS.md, and passed to openclaw agents add --model plus openclaw cron add --model."
     },
     {
       "id": "configure_validation_run",
       "path": "src/cli/configure.ts",
-      "status": "missing",
-      "notes": "The configure wizard does not yet finish with a dry-run or optional live validation step inside the flow."
+      "status": "pass",
+      "notes": "After saving the profile, the wizard runs a dry-run rebalance and persists the validation run summary back onto the profile."
     },
     {
       "id": "secret_backed_token_provisioning",
-      "path": "src/cli/configure.ts",
-      "status": "missing",
-      "notes": "Token provisioning is manual env injection only; no OpenClaw secret-backed setup path exists yet."
+      "path": "src/lib/secrets.ts",
+      "status": "pass",
+      "notes": "Token sources (env + file/singleValue + file/json) resolve through src/lib/secrets.ts. Configure probes the source live before finishing, and showStatus surfaces readiness from the actual resolver."
     },
     {
       "id": "publish_install_validation",
-      "path": "package.json",
-      "status": "not_run",
-      "notes": "The package and plugin manifests exist, but install and distribution validation through npm or ClawHub has not been performed."
+      "path": "scripts/check/publish",
+      "status": "pass",
+      "notes": "npm pack --dry-run --json output is parsed by scripts/check/publish to enforce allowlist/denylist invariants. Integrated into scripts/dev/doctor."
+    },
+    {
+      "id": "live_path_validation",
+      "path": "scripts/check/live-path",
+      "status": "pass",
+      "notes": "End-to-end read path verified: preflight, openclaw/ows/morpho-cli versions, gateway status, query-vaults + get-vault + get-positions + get-token-balance against real Base state, dry-run rebalance against a live profile, and live-runner refusal without arming. Exposed as a doctor probe."
     }
   ],
   "blockers": [
     {
       "id": "local_dependencies_missing",
-      "status": "open",
+      "status": "resolved",
       "details": [
-        "openclaw is not available on PATH in the current environment",
-        "ows is not available on PATH in the current environment"
+        "openclaw and ows are both on PATH in the current development environment",
+        "scripts/dev/doctor verifies tool availability deterministically"
       ]
     }
   ],
   "nextActions": [
-    "Complete the configure wizard with funding guidance, optional funding polling, and a final validation run.",
-    "Add model-selection support for the dedicated vault-manager agent if OpenClaw settings permit it.",
-    "Decide whether to implement OpenClaw secret-backed token provisioning or keep env-only token setup and narrow the spec accordingly.",
-    "Refine the allocation model toward the spec's fuller fee/reward-aware scoring rules.",
-    "Add a deterministic local dev harness for OpenClaw, OWS, and Morpho tooling.",
-    "Verify the live execution path end to end on a machine with openclaw and ows installed.",
-    "Convert the documented eval matrix into executable end-to-end checks.",
-    "Add richer structured logs and metrics around rebalance phases and receipts.",
-    "Validate publish/install flow for npm and ClawHub."
+    {
+      "id": "guard_market_positions",
+      "severity": "medium",
+      "origin": "spec-audit 2026-04-15",
+      "details": [
+        "src/lib/rebalance.ts only iterates vaultPositions; marketPositions from Morpho reads are silently dropped.",
+        "Spec §Agent Behavior Contract narrows the product to USDC vault positions only.",
+        "Add an explicit assertion or structured warning if marketPositions is non-empty so the narrow-by-design invariant is enforced, not implicit."
+      ]
+    },
+    {
+      "id": "document_manual_ows_api_key_provisioning",
+      "severity": "medium",
+      "origin": "spec-audit 2026-04-15",
+      "details": [
+        "src/cli/configure.ts prints an `ows api-key create` command for the operator to run instead of executing it, to avoid pulling the token into plugin process memory.",
+        "Spec §Configure Flow Step 2 reads as if provisioning is automated.",
+        "Reconcile by either (a) updating docs/openclaw-vault-manager-spec.md to document the manual provisioning trade-off, or (b) running the command through runCommand and immediately dropping the token into the configured SecretRef path."
+      ]
+    },
+    {
+      "id": "stop_on_first_simulation_failure",
+      "severity": "medium",
+      "origin": "spec-audit 2026-04-15",
+      "details": [
+        "src/lib/rebalance.ts records simulationOk=false and continues preparing subsequent actions in the same run.",
+        "Spec §Execution Path says the run should stop and report failure with no fallback heuristics.",
+        "Short-circuit the action loop on the first prepare/simulation failure and emit a single structured error in the run receipt + JSONL log."
+      ]
+    },
+    {
+      "id": "reconcile_phase1_scope_statement",
+      "severity": "low",
+      "origin": "spec-audit 2026-04-15",
+      "details": [
+        "pause/resume/run-now are fully implemented in src/cli/register.ts but spec §Rollout Phases still labels them Phase 2.",
+        "Update docs/openclaw-vault-manager-spec.md §Rollout Phases to move these into Phase 1 so the shipping spec matches what the plugin actually delivers."
+      ]
+    },
+    {
+      "id": "snapshot_inherited_model_preference",
+      "severity": "low",
+      "origin": "spec-audit 2026-04-15",
+      "details": [
+        "src/cli/configure.ts stores modelPreference=undefined when the operator picks 'inherit', so the profile is not a complete audit trail of what model actually ran.",
+        "Resolve the active OpenClaw default at configure time (via `openclaw config get` or equivalent) and snapshot it onto the profile alongside an `inheritedAt` timestamp."
+      ]
+    }
   ]
 }

@@ -10,28 +10,9 @@ ensure_tmp_dirs
 
 log "bootstrapping local harness prerequisites"
 require_cmd git
+require_cmd node
+require_cmd npm
+require_cmd npx
 
-if command -v openclaw >/dev/null 2>&1; then
-  log "found openclaw"
-else
-  log "openclaw not found; plugin runtime cannot be exercised yet"
-fi
-
-if command -v ows >/dev/null 2>&1; then
-  log "found ows"
-else
-  log "ows not found; wallet integration cannot be exercised yet"
-fi
-
-if command -v bunx >/dev/null 2>&1; then
-  log "found bunx"
-else
-  log "bunx not found; morpho-cli cannot be exercised yet"
-fi
-
-cat <<'EOF'
-Harness bootstrap completed.
-
-This script is intentionally shallow for now. Its role is to be the stable repo
-entrypoint that later grows into a full local stack launcher.
-EOF
+log "delegating health reporting to scripts/dev/doctor"
+exec "$SCRIPT_DIR/doctor" "$@"
