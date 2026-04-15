@@ -15,7 +15,7 @@ These evals define the minimum deterministic behavior expected from the reposito
 | `WAL-001` | Wallet create command is deterministic and secret-free | Build wallet create + api key commands | Commands reference wallet name and policy, no inline secrets | `scripts/check/evals --only=WAL-001` |
 | `POL-001` | Provision API token only | Wallet exists | Agent credential is API token, not owner credential | future `configure` flow + logs |
 | `POL-002` | Chain restriction enforced | Prepared transaction targets non-Base chain | Generated executable policy denies with chain reason | `scripts/check/evals --only=POL-002` |
-| `POL-003` | Spender restriction enforced | Prepared approval targets unapproved spender | Generated executable policy denies with spender reason | `scripts/check/evals --only=POL-003` |
+| `POL-003` | Approval target restricted to USDC | Prepared approval targets a non-USDC ERC-20 contract | Generated executable policy denies with USDC-target reason | `scripts/check/evals --only=POL-003` |
 | `CRN-001` | Cron environment is ready | OpenClaw gateway reachable | `openclawGatewayIsReachable` returns true | `scripts/check/evals --only=CRN-001` |
 | `CRN-002` | Cron environment warns when gateway is absent | Simulated missing openclaw binary | `openclawGatewayIsReachable` returns false without throwing | `scripts/check/evals --only=CRN-002` |
 | `REB-001` | Dry-run no-op with zero balance | Wallet funded with nothing and no positions | Rebalance returns no-op summary | `scripts/check/evals --only=REB-001` |
@@ -26,7 +26,7 @@ These evals define the minimum deterministic behavior expected from the reposito
 | `REB-006` | Live run requires explicit arming | Valid prepared tx but no arming flag | Script refuses to execute | `scripts/rebalance/live-run` |
 | `REB-007` | Allowed live execution succeeds | Valid prepared tx, successful simulation, arming enabled | Transaction(s) signed through OWS, broadcast on Base, and receipts reported | `scripts/rebalance/live-run` |
 | `REB-008` | Turnover cap blocks instead of clipping | Proposed action set exceeds configured turnover cap | Rebalance is blocked with an explicit turnover-cap reason | `scripts/check/evals --only=REB-008` |
-| `REB-009` | Unsupported vault and market positions block explicitly | Wallet has a vault position outside the allowlist and non-vault market positions | Rebalance is blocked with explicit unsupported-position reasons | `scripts/check/evals --only=REB-009` |
+| `REB-009` | Non-vault Morpho market positions block execution | Wallet has a non-vault Morpho market position | Rebalance is blocked with an explicit non-vault-position reason | `scripts/check/evals --only=REB-009` |
 | `REB-010` | Material top vault set changes trigger a rebalance | Current managed vault set differs from the current top-ranked set but drift remains below threshold | Rebalance still plans the repositioning actions | `scripts/check/evals --only=REB-010` |
 | `OBS-001` | Run logging is auditable | Any dry-run or live-run | Each run emits a JSONL log containing run id, phase transitions, final outcome, and no unredacted secrets | `scripts/check/evals --only=OBS-001` |
 

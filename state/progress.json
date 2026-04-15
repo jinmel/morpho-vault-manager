@@ -78,6 +78,11 @@
       "id": "docs_spec_alignment",
       "status": "completed",
       "notes": "docs/openclaw-vault-manager-spec.md, ARCHITECTURE.md, and SECURITY.md now document the intentional out-of-process OWS API-key provisioning path and place status/pause/resume/run-now in Phase 1 to match shipped behavior."
+    },
+    {
+      "id": "runtime_gated_destinations",
+      "status": "completed",
+      "notes": "Removed per-profile vault and spender address allowlists. Candidate vaults are now discovered at rebalance time via morpho query-vaults (Base USDC). Destination safety is enforced at the runtime layer: runRebalance only forwards morpho-cli-prepared transactions to OWS, so agent-authored calldata has no path to signing. OWS executable policy simplified to chain + native-value + selector + USDC approve-target + turnover cap. Spec, SECURITY, ARCHITECTURE, evals matrix (POL-003, REB-009), and src/ updated in the same change."
     }
   ],
   "checks": [

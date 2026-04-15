@@ -236,6 +236,27 @@ function normalizeVaultShape(raw: Record<string, unknown>): MorphoVaultDetail {
   };
 }
 
+export async function queryMorphoVaults(
+  settings: VaultManagerSettings,
+  chain: "base" | "ethereum",
+  assetSymbol?: string
+): Promise<MorphoVaultDetail[]> {
+  const response = await runMorphoJsonCommand<Record<string, unknown>>(settings, [
+    "query-vaults",
+    "--chain",
+    chain
+  ]);
+  const rawList =
+    Array.isArray(response) ? response : Array.isArray(response?.vaults) ? (response.vaults as Array<Record<string, unknown>>) : [];
+  const vaults = rawList
+    .filter((raw) => raw && typeof raw === "object")
+    .map((raw) => normalizeVaultShape(raw as Record<string, unknown>));
+  if (assetSymbol) {
+    return vaults.filter((vault) => vault.asset.symbol === assetSymbol);
+  }
+  return vaults;
+}
+
 export async function getMorphoVault(
   settings: VaultManagerSettings,
   chain: "base" | "ethereum",

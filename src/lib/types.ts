@@ -47,8 +47,6 @@ export type VaultManagerProfile = {
   walletAddress: string;
   walletMode: "created" | "existing";
   riskProfile: RiskProfileId;
-  allowedVaults: string[];
-  allowedSpenders: string[];
   tokenEnvVar: string;
   tokenSource?: TokenSource;
   usdcAddress: string;

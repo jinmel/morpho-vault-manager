@@ -87,11 +87,10 @@ The configure flow uses `clack` and walks the user through:
 2. wallet creation/import
 3. backup confirmation
 4. risk-profile survey
-5. approved-vault policy setup
-6. deposit instructions
-7. model/agent prompt selection
-8. cron schedule creation
-9. dry-run or live rebalance test
+5. deposit instructions
+6. model/agent prompt selection
+7. cron schedule creation
+8. dry-run or live rebalance test
 
 ### Ongoing Use
 
@@ -113,11 +112,11 @@ The actual periodic execution should use **OpenClaw cron**, not a custom schedul
 
 - Chain: `base` / `eip155:8453`
 - Asset: USDC on Base
-- Strategy: allocate USDC across an allowlisted set of Morpho USDC vaults
+- Strategy: allocate USDC across Base USDC Morpho vaults discovered via `morpho query-vaults`
 
 ### Supported decisions
 
-- choose among approved USDC vaults
+- choose among USDC vaults returned by `morpho query-vaults` on Base
 - rebalance when allocation drift exceeds configured thresholds
 - keep a small USDC cash buffer if configured
 - skip execution when simulation fails or policy denies
@@ -128,7 +127,7 @@ The actual periodic execution should use **OpenClaw cron**, not a custom schedul
 - borrowing strategies
 - cross-chain moves
 - arbitrary token swaps
-- arbitrary contract interactions outside the Morpho vault allowlist
+- any contract interaction not produced by a Morpho CLI prepare flow
 
 ## Architecture
 
@@ -162,7 +161,7 @@ openclaw-vault-manager/
   prompts/
     AGENTS.template.md
   policies/
-    morpho-allowlist-policy.ts
+    morpho-vault-manager-policy.ts
   docs/
     openclaw-vault-manager-spec.md
 ```
@@ -229,7 +228,7 @@ The plugin writes an `AGENTS.md` file into that workspace. That file holds the p
 
 - mandate
 - risk profile
-- approved vault universe
+- candidate-vault discovery rule (`morpho query-vaults` on Base filtered to USDC)
 - rebalance rules
 - escalation rules
 - reporting format
@@ -274,30 +273,27 @@ The plugin must only provision the agent with an **OWS API token**, never the ow
 
 ### Policy model
 
-OWS declarative rules are not enough for this product by themselves. They can restrict chain and expiry, but they do not natively express Morpho-specific recipient allowlists, approval-spender checks, or per-vault notional controls.
+The destination contract allowlist is enforced at the runtime layer, not at OWS policy time. The rebalance runtime only forwards calldata produced by `morpho-cli` prepare flows to OWS — it has no code path that accepts agent-authored calldata — so the trust boundary for destination addresses is the Morpho CLI prepare surface.
 
-So the plugin should create:
+OWS policy still exists as a mechanical cross-check. It enforces the handful of invariants that do not depend on knowing a specific vault address ahead of time:
 
 1. a declarative policy:
    - `allowed_chains = ["eip155:8453"]`
    - optional `expires_at`
 2. a custom executable policy:
-   - only allow approved contract targets
-   - only allow approved method selectors
-   - only allow approved vault addresses and spender addresses
-   - enforce max single-run turnover / notional if configured
-   - optionally block new vaults until explicit reconfiguration
+   - block any transaction with non-zero native value
+   - block any `approve` call whose target is not the configured USDC contract
+   - block any selector that is not `approve`, `deposit`, or `withdraw`
+   - enforce max single-run turnover via the amount word in deposit/withdraw/approve calldata
 
 ### Policy checks the plugin should enforce
 
 - Base only
-- USDC-only vault deposits/withdrawals
-- allowlist of Morpho vault contracts
-- allowlist of approval spender contracts
-- no arbitrary ETH transfers
-- no arbitrary ERC-20 approvals
+- USDC-only approvals (target must be the canonical USDC contract)
+- only `approve`, `deposit`, and `withdraw` selectors reach signing
+- no native-value transfers
 - max notional per rebalance run
-- optional max concentration per vault
+- optional max concentration per vault (computed at rebalance time, not at policy time)
 
 ### Secret handling
 
@@ -410,7 +406,7 @@ The standing order should define:
 
 - wallet identity
 - chain and asset restrictions
-- approved vault universe
+- candidate-vault discovery rule
 - target allocation algorithm
 - max turnover per run
 - no-op conditions
@@ -473,9 +469,8 @@ Run a final dry-run rebalance:
 
 - OWS wallet descriptor + agent API token
 - risk profile config
-- approved vault allowlist
 - current Morpho positions
-- current vault data from `query-vaults` / `get-vault`
+- candidate vault data from `query-vaults` (Base USDC)
 
 ### Read path
 
@@ -490,11 +485,10 @@ Keep it deliberately simple.
 
 #### Candidate filtering
 
-Discard vaults that fail:
+Start from `morpho query-vaults --chain base`. Discard vaults that fail:
 
 - chain != Base
 - asset != USDC
-- not in approved allowlist
 - below minimum TVL threshold
 - version/status not supported by plugin policy
 
@@ -542,7 +536,7 @@ If any simulation fails, the run should stop and report failure. No fallback heu
 
 ### Approval policy
 
-Since `morpho-cli` may emit approval transactions, the OWS executable policy must explicitly allow only approved spender/contract combinations. This is non-optional.
+Since `morpho-cli` may emit approval transactions, the OWS executable policy must refuse any approval whose target is not the canonical USDC contract. The spender address itself is trusted because it is produced by the Morpho CLI prepare flow and the runtime never forwards agent-authored calldata to OWS.
 
 ## Agent Behavior Contract
 
@@ -567,8 +561,7 @@ Required no-op cases:
 Required escalation cases:
 
 - proposed move exceeds configured turnover cap
-- a new vault would enter the target set
-- approval spender is outside allowlist
+- a non-USDC vault position or non-vault Morpho market position is detected on the managed wallet
 - repeated run failures
 
 ## State Model
@@ -587,7 +580,6 @@ The plugin should persist a small machine-readable profile file, for example:
     "decimals": 6
   },
   "riskProfile": "balanced",
-  "allowedVaults": ["0x..."],
   "maxSingleVaultPct": 0.5,
   "rebalanceDriftPct": 0.075,
   "maxTurnoverUsd": 10000,
@@ -639,9 +631,9 @@ The generated `AGENTS.md` should encode rules like:
 - only manage the configured wallet
 - only operate on Base
 - only manage USDC Morpho vault positions
-- only use approved vaults
+- candidate vaults come from `morpho query-vaults`, not from any other source
 - always simulate before signing
-- never invent alternate transactions if CLI preparation fails
+- never hand-craft calldata and never invent alternate transactions if CLI preparation fails
 - never use owner credentials
 - report execute/verify details after each run
 
@@ -691,13 +683,12 @@ It should not assume any single model provider.
 - isolated cron job
 - dry-run + live-run support
 - `status`, `pause`, `resume`, `run-now`
-- strict vault/spender allowlist policy
+- runtime-gated prepare-only execution (destination contracts come from `morpho-cli` prepare flows, never from agent-authored calldata)
 
 ### Phase 2: Better operator ergonomics
 
 - dashboard/status views
 - richer notifications
-- auto-detect new allowlisted vaults but require approval
 - optional `morpho-builder` skill bundling for advanced users
 
 ### Phase 3: Deeper runtime integration
@@ -724,7 +715,6 @@ The plugin is ready for v1 when all are true:
 
 ## Open Questions
 
-- Should v1 allow only an explicit Morpho-curated vault allowlist, or let the user approve any Base USDC vault?
 - Should the first live execution require a human-confirmed “armed mode” toggle after the dry run?
 - Do we want one plugin profile per OpenClaw agent, or multi-profile support from day one?
 - Do we vendor only `morpho-cli`, or also `morpho-builder` for future codegen workflows?

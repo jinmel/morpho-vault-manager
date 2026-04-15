@@ -53,7 +53,6 @@ type Scenario = {
   description: string;
   profile: {
     riskProfile: RiskProfileId;
-    allowedVaults: string[];
     walletAddress?: string;
   };
   vaults: VaultFixture[];
@@ -200,15 +199,11 @@ function fixturePreparedOperation(params: {
 }
 
 function fixtureDeps(scenario: Scenario): RebalanceReadDeps {
-  const vaultMap = new Map(scenario.vaults.map((vault) => [vault.address, fixtureVault(vault)]));
+  const vaultDetails = scenario.vaults.map(fixtureVault);
   const walletAddress = scenario.profile.walletAddress ?? SCENARIO_WALLET;
 
   return {
-    getVault: async (address) => {
-      const vault = vaultMap.get(getAddress(address));
-      if (!vault) throw new Error(`Fixture missing vault ${address}`);
-      return vault;
-    },
+    queryVaults: async () => vaultDetails,
     getPositions: async () =>
       fixturePositions(walletAddress, scenario.positions, scenario.marketPositions ?? []),
     getTokenBalance: async () => fixtureBalance(walletAddress, scenario.idleUsdc),
@@ -236,7 +231,6 @@ async function materializeProfile(
   scenario: Scenario
 ): Promise<VaultManagerProfile> {
   const walletAddress = scenario.profile.walletAddress ?? SCENARIO_WALLET;
-  const allowedVaults = scenario.profile.allowedVaults.map((address) => getAddress(address));
   const riskPreset = RISK_PRESETS[scenario.profile.riskProfile];
 
   const profile: VaultManagerProfile = {
@@ -246,8 +240,6 @@ async function materializeProfile(
     walletAddress,
     walletMode: "existing",
     riskProfile: scenario.profile.riskProfile,
-    allowedVaults,
-    allowedSpenders: allowedVaults,
     tokenEnvVar: `OWS_EVAL_${scenario.id.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`,
     usdcAddress: BASE_USDC_ADDRESS,
     policyId: `eval-policy-${scenario.id}`,
@@ -331,8 +323,7 @@ const SCENARIOS: Scenario[] = [
     id: "REB-001",
     description: "Dry-run no-op with zero balance",
     profile: {
-      riskProfile: "balanced",
-      allowedVaults: [VAULT_A.address, VAULT_B.address]
+      riskProfile: "balanced"
     },
     vaults: [VAULT_A, VAULT_B],
     positions: [],
@@ -346,8 +337,7 @@ const SCENARIOS: Scenario[] = [
     id: "REB-002",
     description: "Dry-run no-op below drift threshold",
     profile: {
-      riskProfile: "balanced",
-      allowedVaults: [VAULT_A.address, VAULT_B.address]
+      riskProfile: "balanced"
     },
     vaults: [VAULT_A, VAULT_B],
     positions: [
@@ -364,8 +354,7 @@ const SCENARIOS: Scenario[] = [
     id: "REB-003",
     description: "Dry-run produces transaction plan",
     profile: {
-      riskProfile: "balanced",
-      allowedVaults: [VAULT_A.address, VAULT_B.address]
+      riskProfile: "balanced"
     },
     vaults: [VAULT_A, VAULT_B],
     positions: [],
@@ -396,8 +385,7 @@ const SCENARIOS: Scenario[] = [
     id: "REB-004",
     description: "Preparation stops after the first simulation failure",
     profile: {
-      riskProfile: "balanced",
-      allowedVaults: [VAULT_A.address, VAULT_B.address]
+      riskProfile: "balanced"
     },
     vaults: [VAULT_A, VAULT_B],
     positions: [],
@@ -432,8 +420,7 @@ const SCENARIOS: Scenario[] = [
     id: "OBS-001",
     description: "Run logging is auditable and secret-free",
     profile: {
-      riskProfile: "balanced",
-      allowedVaults: [VAULT_A.address, VAULT_B.address]
+      riskProfile: "balanced"
     },
     vaults: [VAULT_A, VAULT_B],
     positions: [],
@@ -475,8 +462,7 @@ const SCENARIOS: Scenario[] = [
     id: "REB-008",
     description: "Turnover cap blocks instead of clipping",
     profile: {
-      riskProfile: "balanced",
-      allowedVaults: [VAULT_A.address, VAULT_B.address]
+      riskProfile: "balanced"
     },
     vaults: [VAULT_A, VAULT_B],
     positions: [],
@@ -495,15 +481,13 @@ const SCENARIOS: Scenario[] = [
   },
   {
     id: "REB-009",
-    description: "Unsupported vault and market positions block explicitly",
+    description: "Non-vault Morpho market positions block execution",
     profile: {
-      riskProfile: "balanced",
-      allowedVaults: [VAULT_A.address, VAULT_B.address]
+      riskProfile: "balanced"
     },
     vaults: [VAULT_A, VAULT_B],
     positions: [
-      { vaultAddress: VAULT_A.address, vaultName: VAULT_A.name, suppliedUsdc: "5000" },
-      { vaultAddress: VAULT_D.address, vaultName: VAULT_D.name, suppliedUsdc: "500" }
+      { vaultAddress: VAULT_A.address, vaultName: VAULT_A.name, suppliedUsdc: "5000" }
     ],
     marketPositions: [
       {
@@ -514,7 +498,6 @@ const SCENARIOS: Scenario[] = [
     idleUsdc: "1000",
     expect(result) {
       assertEqual("status", result.status, "blocked");
-      assertContainsReason(result, "outside the approved USDC vault allowlist");
       assertContainsReason(result, "non-vault Morpho market position");
       assertEqual("prepared operations", result.operations.length, 0);
     }
@@ -523,8 +506,7 @@ const SCENARIOS: Scenario[] = [
     id: "REB-010",
     description: "Top vault set changes materially trigger a rebalance",
     profile: {
-      riskProfile: "balanced",
-      allowedVaults: [VAULT_A.address, VAULT_B.address, VAULT_C.address, VAULT_D.address]
+      riskProfile: "balanced"
     },
     vaults: [VAULT_A, VAULT_B, VAULT_C, VAULT_D],
     positions: [
@@ -606,8 +588,8 @@ type PolicyScenario = {
   expect: (decision: PolicyDecision) => void;
 };
 
-const VAULT_ALLOWED = getAddress("0xcccccccccccccccccccccccccccccccccccccccc");
-const VAULT_FORBIDDEN = getAddress("0xdddddddddddddddddddddddddddddddddddddddd");
+const POLICY_VAULT = getAddress("0xcccccccccccccccccccccccccccccccccccccccc");
+const NON_USDC_TOKEN = getAddress("0xdddddddddddddddddddddddddddddddddddddddd");
 
 async function buildPolicyEnvironment(): Promise<{ executablePath: string }> {
   const settings = makeTempSettings();
@@ -615,8 +597,6 @@ async function buildPolicyEnvironment(): Promise<{ executablePath: string }> {
   const artifacts = await writePolicyArtifacts({
     settings,
     profileId: "eval",
-    allowedVaults: [VAULT_ALLOWED],
-    allowedSpenders: [VAULT_ALLOWED],
     riskPreset: RISK_PRESETS.balanced
   });
   return { executablePath: artifacts.executablePath };
@@ -630,7 +610,7 @@ const POLICY_SCENARIOS: PolicyScenario[] = [
       return {
         chain_id: "eip155:1",
         transaction: {
-          to: VAULT_ALLOWED,
+          to: POLICY_VAULT,
           data: encodeCallData("0x6e553f65", [uintAsWord(1_000_000n), addressAsWord(SCENARIO_WALLET)]),
           value: "0"
         }
@@ -645,22 +625,22 @@ const POLICY_SCENARIOS: PolicyScenario[] = [
   },
   {
     id: "POL-003",
-    description: "Spender restriction enforced",
+    description: "Approval target restricted to USDC",
     async setup() {
       const approveSelector = "0x095ea7b3";
       return {
         chain_id: BASE_CHAIN_ID,
         transaction: {
-          to: BASE_USDC_ADDRESS,
-          data: encodeCallData(approveSelector, [addressAsWord(VAULT_FORBIDDEN), uintAsWord(1_000_000n)]),
+          to: NON_USDC_TOKEN,
+          data: encodeCallData(approveSelector, [addressAsWord(POLICY_VAULT), uintAsWord(1_000_000n)]),
           value: "0"
         }
       };
     },
     expect(decision) {
       assertEqual("allow", decision.allow, false);
-      if (!decision.reason?.toLowerCase().includes("spender")) {
-        throw new Error(`expected spender rejection, got ${JSON.stringify(decision)}`);
+      if (!decision.reason?.toLowerCase().includes("usdc")) {
+        throw new Error(`expected USDC rejection, got ${JSON.stringify(decision)}`);
       }
     }
   }

@@ -20,8 +20,9 @@ We do not assume the prompt alone will prevent unsafe execution.
 - Raw private keys never appear in plugin code, logs, prompts, config, or repo files.
 - The agent receives only an OWS API token.
 - Every agent write path is subject to OWS policy enforcement before decryption.
+- The rebalance runtime only forwards transactions produced by `morpho-cli` prepare flows to OWS. No code path accepts agent-authored calldata.
 - Live execution is allowed only on Base for v1.
-- Live execution is allowed only for approved USDC Morpho vault operations for v1.
+- Live execution is allowed only for USDC Morpho vault operations for v1.
 - All live signatures must come from OWS.
 - Simulation failure aborts execution.
 - Policy denial aborts execution.
@@ -60,12 +61,17 @@ Baseline controls:
 
 Required for v1:
 
-- restrict destination contracts to approved Morpho vault/spender addresses
-- restrict method selectors to approved deposit/withdraw/approval flows
-- block arbitrary ETH transfers
-- block arbitrary ERC-20 approvals
-- enforce optional turnover caps
+- restrict method selectors to `approve`, `deposit`, and `withdraw`
+- restrict approve targets to the canonical USDC contract
+- block native-value transfers
+- enforce optional turnover caps via the amount word in calldata
 - enforce optional concentration caps where feasible at policy time
+
+### Runtime-Gated Destinations
+
+Destination contract addresses are not encoded in OWS policy. They are constrained upstream: the rebalance runtime only forwards transactions produced by `morpho-cli` prepare flows (`prepare-deposit`, `prepare-withdraw`) to OWS. There is no code path that accepts agent-authored calldata and hands it to OWS. This keeps the trust boundary at the Morpho CLI prepare surface while leaving OWS policy simple, so a curator-based vault universe does not require per-deploy reconfiguration.
+
+This is an invariant. Any change that lets calldata reach OWS through a path other than `morpho_prepare_*` output must re-introduce a destination allowlist.
 
 ## Logging Rules
 
@@ -79,7 +85,7 @@ Required for v1:
 - Do not write owner credentials into OpenClaw prompts or workspace files.
 - API tokens must be resolved through the configured token source (`env` or `file`), never hardcoded in profile JSON or plugin config.
 - `file` sources are intended for mounted-secret setups (Docker/k8s/systemd EnvironmentFile). File contents are read at execution time and never copied into the profile.
-- Profile files may contain public addresses, wallet IDs, vault allowlists, thresholds, cron metadata, and the token source descriptor (kind + identifier), never the token value itself.
+- Profile files may contain public addresses, wallet IDs, thresholds, cron metadata, and the token source descriptor (kind + identifier), never the token value itself.
 - The configure flow should emit the OWS API-key provisioning command and then accept only the resulting token source descriptor, not the raw token.
 
 ## Execution Guardrails
@@ -100,7 +106,7 @@ Every write-path change should be reviewed against these questions:
 1. Does any new code handle sensitive material directly?
 2. Can this path bypass OWS policy enforcement?
 3. Can this path produce a live transaction after a failed simulation?
-4. Can this path approve an unapproved spender?
+4. Can this path forward calldata to OWS that did not come from a `morpho-cli` prepare flow?
 5. Can this path operate on a non-Base chain or non-USDC asset?
 6. Is the failure mode explicit and visible to the operator?
 

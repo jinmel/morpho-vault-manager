@@ -153,14 +153,10 @@ export function makeFixtureRebalanceDeps(inputs: FixtureSandboxInputs = {}): Reb
   const positions = inputs.positions ?? [];
   const idleUsdc = inputs.idleUsdc ?? "5000";
   const simulationFails = inputs.simulationFails ?? false;
-  const vaultMap = new Map(vaults.map((vault) => [vault.address, fixtureVaultDetail(vault)]));
+  const vaultDetails = vaults.map(fixtureVaultDetail);
 
   return {
-    getVault: async (address) => {
-      const vault = vaultMap.get(getAddress(address));
-      if (!vault) throw new Error(`Fixture missing vault ${address}`);
-      return vault;
-    },
+    queryVaults: async () => vaultDetails,
     getPositions: async () => fixturePositionsResponse(walletAddress, positions),
     getTokenBalance: async () => fixtureTokenBalance(walletAddress, idleUsdc),
     prepareDeposit: async (vaultAddress, _walletAddress, amount) =>

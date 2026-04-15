@@ -107,19 +107,6 @@ function requiredBoolean(value: boolean | symbol | undefined, label: string): bo
   return value;
 }
 
-function parseAddressList(input: string): string[] {
-  return input
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .map((value) => {
-      if (!isAddress(value)) {
-        fail(`Invalid address: ${value}`);
-      }
-      return getAddress(value);
-    });
-}
-
 function tokenEnvVarForProfile(settings: VaultManagerSettings, profileId: string): string {
   if (profileId === "default") {
     return settings.defaultTokenEnvVar;
@@ -621,24 +608,6 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     "Risk Config"
   );
 
-  const vaultsInput = optionalString(
-    await p.text({
-      message: "Allowed vault addresses (comma-separated, leave blank for dry-run-only mode)",
-      placeholder: existing.profile?.allowedVaults.join(", ") ?? "",
-      defaultValue: existing.profile?.allowedVaults.join(", ") ?? ""
-    })
-  );
-
-  const allowedVaults = vaultsInput.length > 0 ? parseAddressList(vaultsInput) : [];
-  const spendersInput = optionalString(
-    await p.text({
-      message: "Additional allowed spender addresses (optional, comma-separated)",
-      placeholder: existing.profile?.allowedSpenders.join(", ") ?? "",
-      defaultValue: existing.profile?.allowedSpenders.join(", ") ?? ""
-    })
-  );
-  const allowedSpenders = spendersInput.length > 0 ? parseAddressList(spendersInput) : allowedVaults;
-
   const modelPreference = await promptModelSelection(existing.profile?.modelPreference);
 
   const notifications = requiredString(
@@ -694,8 +663,6 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
   const policyArtifacts = await writePolicyArtifacts({
     settings,
     profileId,
-    allowedVaults,
-    allowedSpenders,
     usdcAddress: BASE_USDC_ADDRESS,
     riskPreset
   });
@@ -776,8 +743,6 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     walletAddress: wallet.walletAddress,
     walletMode: wallet.walletMode,
     riskProfile,
-    allowedVaults,
-    allowedSpenders,
     tokenEnvVar,
     tokenSource,
     usdcAddress: BASE_USDC_ADDRESS,
@@ -794,10 +759,6 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     cronEnabled,
     createdAt: existing.profile?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    notes:
-      allowedVaults.length === 0
-        ? "No live vault allowlist configured. The profile should remain dry-run-only until vault addresses are added."
-        : undefined,
     riskPreset,
     modelPreference,
     armedForLiveExecution: existing.profile?.armedForLiveExecution ?? false,
@@ -893,7 +854,6 @@ export async function showStatus(settings: VaultManagerSettings, profileId: stri
     walletMode: profile.walletMode,
     riskProfile: profile.riskProfile,
     riskPreset: profile.riskPreset,
-    allowedVaults: profile.allowedVaults,
     tokenEnvVar: profile.tokenEnvVar,
     tokenSource: describeTokenSource(effectiveSource),
     tokenReady: tokenProbe.ok,
@@ -926,7 +886,6 @@ export async function showStatus(settings: VaultManagerSettings, profileId: stri
       `Risk profile: ${summary.riskProfile}`,
       `Schedule: ${describeCronSchedule(summary.cronExpression)} (${summary.timezone})`,
       `Risk config: ${formatRiskPresetConfig(summary.riskPreset)}`,
-      `Allowed vaults: ${summary.allowedVaults.length}`,
       `Token source: ${summary.tokenSource} (${summary.tokenReady ? "ready" : `unavailable: ${summary.tokenReadyError}`})`,
       `Agent: ${summary.agentId}`,
       `Model: ${summary.modelPreference ?? "(default routing)"}`,

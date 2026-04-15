@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { getAddress } from "viem";
 import { BASE_USDC_ADDRESS, RISK_PRESETS } from "../lib/constants.js";
 import {
   FIXTURE_VAULT_A,
@@ -67,14 +66,6 @@ async function makeSandboxProfile(
     walletAddress: FIXTURE_WALLET,
     walletMode: "existing",
     riskProfile: "balanced",
-    allowedVaults: [
-      getAddress(FIXTURE_VAULT_A.address),
-      getAddress(FIXTURE_VAULT_B.address)
-    ],
-    allowedSpenders: [
-      getAddress(FIXTURE_VAULT_A.address),
-      getAddress(FIXTURE_VAULT_B.address)
-    ],
     tokenEnvVar: "OWS_SANDBOX_TOKEN",
     tokenSource: { kind: "env", envVar: "OWS_SANDBOX_TOKEN" },
     usdcAddress: BASE_USDC_ADDRESS,

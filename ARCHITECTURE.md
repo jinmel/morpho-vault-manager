@@ -80,7 +80,7 @@ The initial assumption is `morpho-cli` plus vendored Morpho skill content.
 2. Plugin checks for required tools and daemon assumptions.
 3. Plugin creates or imports an OWS wallet.
 4. Plugin emits OWS API-key provisioning instructions with Morpho-specific policy constraints, and the operator completes token creation out-of-process so the raw token never enters plugin process memory.
-5. Plugin records the risk profile and allowed-vault config.
+5. Plugin records the risk profile.
 6. Plugin offers funding guidance and an optional "continue once funded" balance poll against Morpho token reads.
 7. Plugin offers optional model-routing preference for the dedicated agent.
 8. Plugin creates a dedicated OpenClaw agent workspace.
@@ -130,6 +130,7 @@ This is the intended direction for the repo:
 - The plugin must remain model-agnostic.
 - All live writes must be policy-gated through OWS.
 - Base-only and USDC-only must be enforceable mechanically, not just mentioned in prompts.
+- The rebalance runtime must only forward `morpho-cli`-prepared transactions to OWS. Agent-authored calldata never reaches signing.
 - Simulation failure is terminal for a run.
 - Policy denial is terminal for a run.
 - Live execution must be auditable from logs and evals.
@@ -140,7 +141,6 @@ This is the intended direction for the repo:
 
 - profile file loading
 - risk profile resolution
-- allowed-vault resolution
 
 ### OWS Adapter
 

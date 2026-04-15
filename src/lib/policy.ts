@@ -14,15 +14,13 @@ type PolicyArtifacts = {
 export async function writePolicyArtifacts(params: {
   settings: VaultManagerSettings;
   profileId: string;
-  allowedVaults: string[];
-  allowedSpenders: string[];
   usdcAddress?: string;
   riskPreset: RiskPreset;
 }): Promise<PolicyArtifacts> {
   const usdcAddress = params.usdcAddress ?? BASE_USDC_ADDRESS;
   const policyId = `morpho-vault-manager-${params.profileId}`;
   const policiesRoot = path.join(params.settings.dataRoot, "policies", params.profileId);
-  const executablePath = path.join(policiesRoot, "morpho-allowlist-policy.mjs");
+  const executablePath = path.join(policiesRoot, "morpho-vault-manager-policy.mjs");
   const policyFilePath = path.join(policiesRoot, `${policyId}.json`);
 
   await ensureDir(policiesRoot);
@@ -32,16 +30,10 @@ export async function writePolicyArtifacts(params: {
   const withdrawSelector = toFunctionSelector("withdraw(uint256,address,address)");
 
   const executableContent = `#!/usr/bin/env node
-import { stdin, stdout, stderr } from "node:process";
+import { stdin, stdout } from "node:process";
 
 const config = {
   baseChainId: ${JSON.stringify(BASE_CHAIN_ID)},
-  allowedVaults: ${JSON.stringify(params.allowedVaults.map((value) => value.toLowerCase()))},
-  allowedSpenders: ${JSON.stringify(
-    (params.allowedSpenders.length > 0 ? params.allowedSpenders : params.allowedVaults).map((value) =>
-      value.toLowerCase()
-    )
-  )},
   usdcAddress: ${JSON.stringify(usdcAddress.toLowerCase())},
   approveSelector: ${JSON.stringify(approveSelector)},
   depositSelector: ${JSON.stringify(depositSelector)},
@@ -83,12 +75,6 @@ function parseWord(hex, offset) {
   return hex.slice(start, end);
 }
 
-function parseAddressWord(hex, offset) {
-  const word = parseWord(hex, offset);
-  if (!word) return null;
-  return normalizeAddress("0x" + word.slice(24));
-}
-
 function parseUintWord(hex, offset) {
   const word = parseWord(hex, offset);
   if (!word) return null;
@@ -126,14 +112,7 @@ if (selector === config.approveSelector) {
     process.exit(0);
   }
 
-  const spender = parseAddressWord(data, 0);
   const amount = parseUintWord(data, 1);
-
-  if (!spender || !config.allowedSpenders.includes(spender)) {
-    deny("approval spender is not allowlisted");
-    process.exit(0);
-  }
-
   if (amount === null || amount > config.maxTurnoverUnits) {
     deny("approval amount exceeds the configured turnover cap");
     process.exit(0);
@@ -143,13 +122,8 @@ if (selector === config.approveSelector) {
   process.exit(0);
 }
 
-if (!config.allowedVaults.includes(to)) {
-  deny("contract target is not allowlisted");
-  process.exit(0);
-}
-
 if (selector !== config.depositSelector && selector !== config.withdrawSelector) {
-  deny("function selector is not allowlisted");
+  deny("function selector is not allowed");
   process.exit(0);
 }
 

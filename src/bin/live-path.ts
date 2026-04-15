@@ -79,9 +79,8 @@ function pickTopVaults(vaults: MorphoVaultSummary[], count: number): MorphoVault
 
 async function writeValidationProfile(
   settings: VaultManagerSettings,
-  vaults: MorphoVaultSummary[]
+  _vaults: MorphoVaultSummary[]
 ): Promise<VaultManagerProfile> {
-  const allowedVaults = vaults.map((vault) => getAddress(vault.address));
   const profile: VaultManagerProfile = {
     profileId: "live-path",
     chain: "base",
@@ -89,8 +88,6 @@ async function writeValidationProfile(
     walletAddress: LIVE_VALIDATION_WALLET,
     walletMode: "existing",
     riskProfile: "balanced",
-    allowedVaults,
-    allowedSpenders: allowedVaults,
     tokenEnvVar: "OWS_LIVE_PATH_TOKEN",
     tokenSource: { kind: "env", envVar: "OWS_LIVE_PATH_TOKEN" },
     usdcAddress: BASE_USDC_ADDRESS,

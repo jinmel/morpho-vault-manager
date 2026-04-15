@@ -17,9 +17,9 @@ import { ensureDir, writeJsonFile } from "./fs.js";
 import {
   getMorphoPositions,
   getMorphoTokenBalance,
-  getMorphoVault,
   prepareMorphoDeposit,
   prepareMorphoWithdraw,
+  queryMorphoVaults,
   type MorphoPositionsResponse,
   type MorphoPreparedOperation,
   type MorphoPreparedWarning,
@@ -39,7 +39,7 @@ export type RebalanceMode = "dry-run" | "live";
 export type RebalanceStatus = "no_op" | "planned" | "executed" | "blocked";
 
 export type RebalanceReadDeps = {
-  getVault: (address: string) => Promise<MorphoVaultDetail>;
+  queryVaults: () => Promise<MorphoVaultDetail[]>;
   getPositions: (walletAddress: string) => Promise<MorphoPositionsResponse>;
   getTokenBalance: (walletAddress: string) => Promise<MorphoTokenBalanceResponse>;
   prepareDeposit: (
@@ -56,7 +56,7 @@ export type RebalanceReadDeps = {
 
 function defaultReadDeps(settings: VaultManagerSettings, profile: VaultManagerProfile): RebalanceReadDeps {
   return {
-    getVault: (address) => getMorphoVault(settings, profile.chain, address),
+    queryVaults: () => queryMorphoVaults(settings, profile.chain, "USDC"),
     getPositions: (walletAddress) => getMorphoPositions(settings, profile.chain, walletAddress),
     getTokenBalance: (walletAddress) =>
       getMorphoTokenBalance(settings, profile.chain, profile.usdcAddress, walletAddress),
@@ -236,33 +236,34 @@ function describePosition(position: MorphoVaultPosition): string {
 
 function collectUnsupportedPositionReasons(params: {
   positionsResponse: MorphoPositionsResponse;
-  allowedVaultSet: Set<string>;
+  candidateVaultSet: Set<string>;
 }): {
   blockers: string[];
-  unsupportedVaultRejections: Array<{ address: string; reason: string }>;
+  nonUsdcVaultRejections: Array<{ address: string; reason: string }>;
   supportedVaultPositions: MorphoVaultPosition[];
 } {
   const blockers: string[] = [];
-  const unsupportedVaultRejections: Array<{ address: string; reason: string }> = [];
+  const nonUsdcVaultRejections: Array<{ address: string; reason: string }> = [];
   const supportedVaultPositions: MorphoVaultPosition[] = [];
-  const unsupportedVaultPositions: MorphoVaultPosition[] = [];
+  const nonUsdcVaultPositions: MorphoVaultPosition[] = [];
 
   for (const position of params.positionsResponse.vaultPositions) {
     const address = getAddress(position.vault.address);
-    if (params.allowedVaultSet.has(address)) {
-      supportedVaultPositions.push(position);
-    } else {
-      unsupportedVaultPositions.push(position);
-      unsupportedVaultRejections.push({
+    const assetSymbol = position.vault.asset?.symbol;
+    if (assetSymbol && assetSymbol !== "USDC") {
+      nonUsdcVaultPositions.push(position);
+      nonUsdcVaultRejections.push({
         address,
-        reason: `Vault position ${describePosition(position)} is outside the approved vault allowlist.`
+        reason: `Vault position ${describePosition(position)} is not a USDC vault (asset ${assetSymbol}).`
       });
+      continue;
     }
+    supportedVaultPositions.push(position);
   }
 
-  if (unsupportedVaultPositions.length > 0) {
+  if (nonUsdcVaultPositions.length > 0) {
     blockers.push(
-      `Found ${unsupportedVaultPositions.length} unsupported Morpho vault position(s) outside the approved USDC vault allowlist: ${unsupportedVaultPositions
+      `Found ${nonUsdcVaultPositions.length} non-USDC Morpho vault position(s); this agent only manages USDC vault positions: ${nonUsdcVaultPositions
         .map(describePosition)
         .join(", ")}.`
     );
@@ -276,7 +277,7 @@ function collectUnsupportedPositionReasons(params: {
 
   return {
     blockers,
-    unsupportedVaultRejections,
+    nonUsdcVaultRejections,
     supportedVaultPositions
   };
 }
@@ -795,12 +796,9 @@ export async function runRebalance(
     walletAddress: profile.walletAddress,
     chain: profile.chain,
     riskProfile: profile.riskProfile,
-    allowedVaults: profile.allowedVaults.length,
     logPath
   });
 
-  const normalizedAllowedVaults = profile.allowedVaults.map((address) => getAddress(address));
-  const allowedVaultSet = new Set(normalizedAllowedVaults);
   const blockers: string[] = [];
   const reasons: string[] = [];
   const warnings: string[] = [];
@@ -809,74 +807,10 @@ export async function runRebalance(
     transactions: []
   };
 
-  if (profile.allowedVaults.length === 0) {
-    await logger.event("complete", "No vault allowlist configured; returning no-op", {
-      status: "no_op"
-    });
-    const result: RebalanceRunResult = {
-      runId,
-      mode,
-      status: "no_op",
-      profileId: profile.profileId,
-      createdAt,
-      receiptPath,
-      logPath,
-      walletAddress: profile.walletAddress,
-      riskProfile: profile.riskProfile,
-      tokenEnvVar: profile.tokenEnvVar,
-      tokenSource: tokenSourceDescription,
-      tokenReady,
-      reasons: ["No approved vault allowlist is configured for this profile."],
-      warnings,
-      metrics: {
-        idleUsdc: "0",
-        totalManagedUsdc: "0",
-        targetCashBufferUsdc: formatUsdc(targetCashBuffer(0n, profile.riskPreset)),
-        driftThresholdPct: percentString(profile.riskPreset.rebalanceDriftPct * 100),
-        maxObservedDriftPct: "0.00",
-        turnoverCapUsdc: String(profile.riskPreset.maxTurnoverUsd),
-        totalPlannedTurnoverUsdc: "0"
-      },
-      vaults: {
-        selected: [],
-        rejected: normalizedAllowedVaults.map((address) => ({
-          address,
-          reason: "Profile has not been approved for live vault operations yet."
-        }))
-      },
-      allocations: [],
-      actions: [],
-      operations: [],
-      execution
-    };
+  await logger.event("read", "Fetching live Morpho state");
 
-    await persistRunReceipt(result);
-    await logger.close();
-    return result;
-  }
-
-  await logger.event("read", "Fetching live Morpho state", {
-    allowedVaults: normalizedAllowedVaults.length
-  });
-
-  const allowedVaultResults = await Promise.allSettled(
-    normalizedAllowedVaults.map((address) => deps.getVault(address))
-  );
-
-  const liveVaults: MorphoVaultDetail[] = [];
+  const liveVaults = await deps.queryVaults();
   const rejectedVaults: Array<{ address: string; reason: string }> = [];
-
-  allowedVaultResults.forEach((result, index) => {
-    if (result.status === "fulfilled") {
-      liveVaults.push(result.value);
-      return;
-    }
-
-    rejectedVaults.push({
-      address: normalizedAllowedVaults[index],
-      reason: result.reason instanceof Error ? result.reason.message : "Failed to load vault state."
-    });
-  });
 
   const { ranked, rejected } = buildRankedCandidates(liveVaults, profile.riskPreset);
   rejectedVaults.push(...rejected);
@@ -891,15 +825,17 @@ export async function runRebalance(
       }))
   );
 
+  const candidateVaultSet = new Set<string>(liveVaults.map((vault) => getAddress(vault.address)));
+
   const positionsResponse = await deps.getPositions(profile.walletAddress);
   const tokenBalance = await deps.getTokenBalance(profile.walletAddress);
-  const { blockers: positionBlockers, unsupportedVaultRejections, supportedVaultPositions } =
+  const { blockers: positionBlockers, nonUsdcVaultRejections, supportedVaultPositions } =
     collectUnsupportedPositionReasons({
       positionsResponse,
-      allowedVaultSet
+      candidateVaultSet
     });
   blockers.push(...positionBlockers);
-  rejectedVaults.push(...unsupportedVaultRejections);
+  rejectedVaults.push(...nonUsdcVaultRejections);
 
   const managedPositions = supportedVaultPositions;
 
@@ -955,7 +891,7 @@ export async function runRebalance(
       reasons.push("No USDC balance and no managed Morpho vault positions were found.");
     }
     if (selected.length === 0) {
-      reasons.push("No allowlisted vaults passed the current risk constraints.");
+      reasons.push("No candidate vaults passed the current risk constraints.");
     }
     if (totalManaged > 0n && !drift.exceeded && !topVaultSetChange.changed) {
       reasons.push(
@@ -977,7 +913,7 @@ export async function runRebalance(
     driftExceeded: drift.exceeded,
     maxObservedDriftPct: drift.maxObservedPct,
     topVaultSetChangedMaterially: topVaultSetChange.changed,
-    unsupportedVaultPositionCount: unsupportedVaultRejections.length,
+    nonUsdcVaultPositionCount: nonUsdcVaultRejections.length,
     marketPositionCount: positionsResponse.marketPositions.length,
     turnoverCapExceeded: plannedTurnoverUsdc > turnoverCap,
     selectedVaults: selected.map((vault) => vault.address),
