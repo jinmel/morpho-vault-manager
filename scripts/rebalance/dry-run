@@ -12,4 +12,4 @@ PROFILE_ID="${VAULT_MANAGER_PROFILE:-default}"
 
 log "running rebalance dry-run for profile ${PROFILE_ID}"
 
-npx tsx "$ROOT_DIR/src/bin/rebalance.ts" dry-run --profile "$PROFILE_ID"
+node "$ROOT_DIR/dist/src/bin/rebalance.js" dry-run --profile "$PROFILE_ID"

@@ -16,4 +16,4 @@ PROFILE_ID="${VAULT_MANAGER_PROFILE:-default}"
 
 log "running live rebalance for profile ${PROFILE_ID}"
 
-npx tsx "$ROOT_DIR/src/bin/rebalance.ts" live --profile "$PROFILE_ID" --allow-live
+node "$ROOT_DIR/dist/src/bin/rebalance.js" live --profile "$PROFILE_ID" --allow-live

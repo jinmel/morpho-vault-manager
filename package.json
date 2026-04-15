@@ -5,7 +5,7 @@
   "type": "module",
   "openclaw": {
     "extensions": [
-      "./index.ts"
+      "./dist/index.js"
     ],
     "compat": {
       "pluginApi": ">=2026.4.12",
@@ -17,21 +17,23 @@
     }
   },
   "files": [
-    "index.ts",
+    "dist/index.js",
+    "dist/src/cli/**/*",
+    "dist/src/lib/**/*",
+    "!dist/src/lib/fixtures.js",
+    "dist/src/bin/rebalance.js",
     "openclaw.plugin.json",
-    "src/cli/**/*",
-    "src/lib/**/*",
-    "!src/lib/fixtures.ts",
-    "src/bin/rebalance.ts",
     "skills/**/*",
     "scripts/rebalance/**/*",
     "scripts/common.sh",
-    "tsconfig.json",
     "README.md",
     "SECURITY.md",
     "ARCHITECTURE.md"
   ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "npm run -s clean && npm run -s build",
     "typecheck": "tsc --noEmit",
     "pack:dry-run": "npm pack --dry-run"
   },

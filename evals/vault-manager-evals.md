@@ -37,3 +37,9 @@ A capability is not complete until its relevant row in this matrix has:
 - a real implementation path
 - a reproducible setup
 - a pass/fail outcome that does not depend on manual interpretation
+
+## Manual Release Verification
+
+The deterministic evals above do not replace a fresh-machine install test from the packed or published plugin artifact.
+
+Before release, run the checkbox sheet in [docs/release-qa-checklist.md](../docs/release-qa-checklist.md) and treat any unchecked release-blocking item as a ship stopper.

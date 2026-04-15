@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { runCommandWithTimeout } from "openclaw/plugin-sdk/process-runtime";
 
 export type CommandResult = {
   stdout: string;
@@ -7,12 +7,11 @@ export type CommandResult = {
 };
 
 export async function commandExists(command: string): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    const child = spawn("sh", ["-lc", `command -v ${shellEscape(command)} >/dev/null 2>&1`], {
-      stdio: "ignore"
-    });
-    child.on("close", (code) => resolve(code === 0));
-  });
+  const result = await runCommandWithTimeout(
+    ["sh", "-lc", `command -v ${shellEscape(command)} >/dev/null 2>&1`],
+    { timeoutMs: 2_000 }
+  );
+  return result.code === 0;
 }
 
 export async function runCommand(
@@ -20,39 +19,25 @@ export async function runCommand(
   args: string[],
   opts?: { cwd?: string; env?: NodeJS.ProcessEnv }
 ): Promise<CommandResult> {
-  return new Promise<CommandResult>((resolve) => {
-    const child = spawn(command, args, {
+  try {
+    const result = await runCommandWithTimeout([command, ...args], {
+      timeoutMs: 120_000,
       cwd: opts?.cwd,
-      env: opts?.env,
-      stdio: ["ignore", "pipe", "pipe"]
+      env: opts?.env
     });
 
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("error", (error) => {
-      resolve({
-        stdout,
-        stderr: stderr || (error as NodeJS.ErrnoException).message,
-        code: 127
-      });
-    });
-    child.on("close", (code) => {
-      resolve({
-        stdout,
-        stderr,
-        code: code ?? 1
-      });
-    });
-  });
+    return {
+      stdout: result.stdout,
+      stderr: result.stderr,
+      code: result.code ?? 1
+    };
+  } catch (error) {
+    return {
+      stdout: "",
+      stderr: error instanceof Error ? error.message : String(error),
+      code: 127
+    };
+  }
 }
 
 export function shellEscape(value: string): string {

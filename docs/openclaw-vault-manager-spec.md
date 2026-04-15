@@ -70,7 +70,7 @@ So the correct packaging for v1 is:
 ### Install
 
 ```bash
-openclaw plugins install clawhub:@morpho/openclaw-vault-manager
+openclaw plugins install @morpho/openclaw-vault-manager
 openclaw plugins enable morpho-vault-manager
 openclaw gateway restart
 ```
@@ -309,6 +309,7 @@ Preferred storage:
 - or plugin-scoped env via `plugins.entries.<id>.env`
 
 The configure command should not read the raw token into plugin process memory. Instead, it should emit the exact OWS API-key provisioning command, then record only an env/file/`SecretRef`-backed source descriptor for the resulting token.
+The current implementation keeps the token out of plugin process memory by having the operator run `ows api-key create` manually and then point the plugin at an env-var, file-backed secret, or `SecretRef` source.
 
 ## Configure Flow Spec
 

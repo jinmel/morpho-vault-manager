@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../common.sh
+source "$SCRIPT_DIR/../common.sh"
+
+require_cmd node
+require_cmd npm
+require_cmd openclaw
+
+MIN_VERSION="$(cd "$ROOT_DIR" && node -p "require('./package.json').openclaw.compat.minGatewayVersion")"
+PLUGIN_ID="$(cd "$ROOT_DIR" && node -p "require('./openclaw.plugin.json').id")"
+PACKAGE_FILE="$(cd "$ROOT_DIR" && npm pack --silent)"
+PACKAGE_PATH="$ROOT_DIR/$PACKAGE_FILE"
+
+cleanup() {
+  rm -f "$PACKAGE_PATH"
+}
+trap cleanup EXIT
+
+version_ge() {
+  local left="$1"
+  local right="$2"
+  local first
+  first="$(printf '%s\n%s\n' "$left" "$right" | sort -V | head -n1)"
+  [[ "$first" == "$right" ]]
+}
+
+OPENCLAW_VERSION_RAW="$(openclaw --version)"
+OPENCLAW_VERSION="$(printf '%s' "$OPENCLAW_VERSION_RAW" | sed -n 's/^OpenClaw \([0-9.]*\).*/\1/p')"
+
+if [[ -z "$OPENCLAW_VERSION" ]]; then
+  die "could not parse OpenClaw version from: $OPENCLAW_VERSION_RAW"
+fi
+
+if ! version_ge "$OPENCLAW_VERSION" "$MIN_VERSION"; then
+  die "OpenClaw $OPENCLAW_VERSION is below the supported minimum $MIN_VERSION. Run release install QA on a supported gateway."
+fi
+
+log "verifying release install path on OpenClaw $OPENCLAW_VERSION"
+log "packing release artifact"
+
+(cd "$ROOT_DIR" && npm run -s clean && npm run -s build >/dev/null)
+(cd "$ROOT_DIR" && scripts/check/publish >/dev/null)
+
+if openclaw plugins inspect "$PLUGIN_ID" >/dev/null 2>&1; then
+  log "removing existing installed plugin $PLUGIN_ID"
+  openclaw plugins uninstall --force "$PLUGIN_ID" >/dev/null
+fi
+
+log "installing packed artifact without unsafe override"
+INSTALL_OUTPUT="$(openclaw plugins install "$PACKAGE_PATH" 2>&1)"
+printf '%s\n' "$INSTALL_OUTPUT"
+
+if printf '%s' "$INSTALL_OUTPUT" | grep -q -- '--dangerously-force-unsafe-install'; then
+  die "install path still references unsafe override"
+fi
+
+log "enabling plugin"
+openclaw plugins enable "$PLUGIN_ID" >/dev/null || true
+
+log "restarting gateway"
+openclaw gateway restart >/dev/null
+
+log "verifying installed command surface"
+openclaw vault-manager --help >/dev/null
+
+log "release install gate passed"

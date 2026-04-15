@@ -3,7 +3,7 @@
   "project": "openclaw-vault-manager",
   "lastUpdated": "2026-04-15",
   "overallStatus": "ready_for_review",
-  "currentFocus": "spec_conformance_fixes_complete",
+  "currentFocus": "release_installation_qa_verified_with_version_floor",
   "currentPlan": {
     "id": "bootstrap-harness",
     "path": "docs/exec-plans/active/bootstrap-harness.md",
@@ -170,6 +170,30 @@
       "path": "scripts/check/live-path",
       "status": "pass",
       "notes": "End-to-end read path verified: preflight, openclaw/ows/morpho-cli versions, gateway status, query-vaults + get-vault + get-positions + get-token-balance against real Base state, dry-run rebalance against a live profile, and live-runner refusal without arming. Exposed as a doctor probe."
+    },
+    {
+      "id": "release_installation_qa",
+      "path": "docs/release-qa-checklist.md",
+      "status": "pass",
+      "notes": "Added a published README, a final checkbox-based QA checklist for fresh-machine install/configure verification, a publish guard that now requires README.md in the packed artifact, and compiled dist/ runtime packaging so the installed plugin executes from built JS instead of unresolved TS import paths."
+    },
+    {
+      "id": "safe_install_path",
+      "path": "package.json",
+      "status": "pass",
+      "notes": "The packaged plugin no longer ships child_process-based command execution in its runtime path. Normal openclaw plugins install from the packed artifact now succeeds without --dangerously-force-unsafe-install."
+    },
+    {
+      "id": "release_install_gate",
+      "path": "scripts/check/release-install",
+      "status": "pass",
+      "notes": "Added a fail-closed release gate that builds the artifact, checks the packed manifest, enforces the declared minGatewayVersion, installs without unsafe override, enables the plugin, restarts the gateway, and verifies openclaw vault-manager --help on supported OpenClaw versions."
+    },
+    {
+      "id": "release_spec_revision",
+      "path": "docs/openclaw-vault-manager-spec-revised-2026-04-15.md",
+      "status": "pass",
+      "notes": "Added a revised spec addendum for release/install requirements: no unsafe override in release artifacts, compiled runtime packaging, and compatibility floors defined by full installed-plugin command execution rather than metadata-only load."
     }
   ],
   "blockers": [
@@ -180,9 +204,58 @@
         "openclaw and ows are both on PATH in the current development environment",
         "scripts/dev/doctor verifies tool availability deterministically"
       ]
+    },
+    {
+      "id": "local_gateway_below_supported_min_for_full_cli_qa",
+      "status": "open",
+      "details": [
+        "This machine is running OpenClaw 2026.4.2.",
+        "The plugin package now correctly declares minGatewayVersion 2026.4.12 again after QA showed 2026.4.2 only reaches install/help metadata and does not support end-to-end openclaw vault-manager command execution.",
+        "scripts/check/release-install now fails closed on unsupported versions before publish.",
+        "Fresh-machine release QA for the installed plugin should be completed on OpenClaw gateway 2026.4.12 or newer."
+      ]
     }
   ],
   "nextActions": [
+    {
+      "id": "guard_market_positions",
+      "severity": "medium",
+      "origin": "spec-audit 2026-04-15",
+      "details": [
+        "src/lib/rebalance.ts only iterates vaultPositions; marketPositions from Morpho reads are silently dropped.",
+        "Spec §Agent Behavior Contract narrows the product to USDC vault positions only.",
+        "Add an explicit assertion or structured warning if marketPositions is non-empty so the narrow-by-design invariant is enforced, not implicit."
+      ]
+    },
+    {
+      "id": "document_manual_ows_api_key_provisioning",
+      "severity": "medium",
+      "origin": "spec-audit 2026-04-15",
+      "details": [
+        "src/cli/configure.ts prints an `ows api-key create` command for the operator to run instead of executing it, to avoid pulling the token into plugin process memory.",
+        "Spec/install docs now document the manual provisioning trade-off and the env/file-backed secret handoff.",
+        "Keep the operator-run command model unless a future implementation can provision and store the token without exposing it to plugin process memory."
+      ]
+    },
+    {
+      "id": "stop_on_first_simulation_failure",
+      "severity": "medium",
+      "origin": "spec-audit 2026-04-15",
+      "details": [
+        "src/lib/rebalance.ts records simulationOk=false and continues preparing subsequent actions in the same run.",
+        "Spec §Execution Path says the run should stop and report failure with no fallback heuristics.",
+        "Short-circuit the action loop on the first prepare/simulation failure and emit a single structured error in the run receipt + JSONL log."
+      ]
+    },
+    {
+      "id": "reconcile_phase1_scope_statement",
+      "severity": "low",
+      "origin": "spec-audit 2026-04-15",
+      "details": [
+        "pause/resume/run-now are fully implemented in src/cli/register.ts but spec §Rollout Phases still labels them Phase 2.",
+        "Update docs/openclaw-vault-manager-spec.md §Rollout Phases to move these into Phase 1 so the shipping spec matches what the plugin actually delivers."
+      ]
+    },
     {
       "id": "snapshot_inherited_model_preference",
       "severity": "low",
