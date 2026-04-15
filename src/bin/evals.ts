@@ -4,6 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { getAddress, parseUnits, formatUnits } from "viem";
 import { BASE_CHAIN_ID, BASE_USDC_ADDRESS, RISK_PRESETS, USDC_DECIMALS } from "../lib/constants.js";
+import {
+  CRON_SCHEDULE_PRESETS,
+  describeCronSchedule,
+  formatRiskPresetConfig
+} from "../cli/configure.js";
 import { openclawGatewayIsReachable } from "../lib/openclaw.js";
 import { buildApiKeyCreateCommand, buildWalletCreateCommand } from "../lib/ows.js";
 import { writePolicyArtifacts } from "../lib/policy.js";
@@ -54,6 +59,8 @@ type Scenario = {
   vaults: VaultFixture[];
   positions: PositionFixture[];
   idleUsdc: string;
+  marketPositions?: Array<Record<string, unknown>>;
+  depsFactory?: (scenario: Scenario) => RebalanceReadDeps;
   expect: (result: RebalanceRunResult) => void | Promise<void>;
 };
 
@@ -73,6 +80,22 @@ const VAULT_B: VaultFixture = {
   apyPct: "0.045",
   feePct: "0.05",
   tvlUsd: "20000000"
+};
+
+const VAULT_C: VaultFixture = {
+  address: getAddress("0xcccccccccccccccccccccccccccccccccccccccc"),
+  name: "USDC Vault C",
+  apyPct: "0.042",
+  feePct: "0.04",
+  tvlUsd: "12000000"
+};
+
+const VAULT_D: VaultFixture = {
+  address: getAddress("0xdddddddddddddddddddddddddddddddddddddddd"),
+  name: "USDC Vault D",
+  apyPct: "0.031",
+  feePct: "0.03",
+  tvlUsd: "3500000"
 };
 
 function fixtureVault(vault: VaultFixture): MorphoVaultDetail {
@@ -97,7 +120,8 @@ function fixtureVault(vault: VaultFixture): MorphoVaultDetail {
 
 function fixturePositions(
   walletAddress: string,
-  positions: PositionFixture[]
+  positions: PositionFixture[],
+  marketPositions: Array<Record<string, unknown>> = []
 ): MorphoPositionsResponse {
   const vaultPositions: MorphoVaultPosition[] = positions.map((position) => ({
     vault: {
@@ -121,14 +145,14 @@ function fixturePositions(
     userAddress: walletAddress,
     totals: {
       vaultCount: vaultPositions.length,
-      marketCount: 0,
+      marketCount: marketPositions.length,
       suppliedUsd: positions.reduce((acc, position) => acc + Number(position.suppliedUsdc), 0).toString(),
       borrowedUsd: "0",
       collateralUsd: "0",
       netWorthUsd: "0"
     },
     vaultPositions,
-    marketPositions: []
+    marketPositions
   };
 }
 
@@ -185,7 +209,8 @@ function fixtureDeps(scenario: Scenario): RebalanceReadDeps {
       if (!vault) throw new Error(`Fixture missing vault ${address}`);
       return vault;
     },
-    getPositions: async () => fixturePositions(walletAddress, scenario.positions),
+    getPositions: async () =>
+      fixturePositions(walletAddress, scenario.positions, scenario.marketPositions ?? []),
     getTokenBalance: async () => fixtureBalance(walletAddress, scenario.idleUsdc),
     prepareDeposit: async (vaultAddress, _walletAddress, amount) =>
       fixturePreparedOperation({
@@ -202,21 +227,6 @@ function fixtureDeps(scenario: Scenario): RebalanceReadDeps {
         walletAddress,
         amount,
         succeed: true
-      })
-  };
-}
-
-function fixtureDepsWithSimulationFailure(scenario: Scenario): RebalanceReadDeps {
-  const base = fixtureDeps(scenario);
-  return {
-    ...base,
-    prepareDeposit: async (vaultAddress, _walletAddress, amount) =>
-      fixturePreparedOperation({
-        kind: "deposit",
-        vaultAddress,
-        walletAddress: scenario.profile.walletAddress ?? SCENARIO_WALLET,
-        amount,
-        succeed: false
       })
   };
 }
@@ -258,6 +268,16 @@ async function materializeProfile(
 
   await saveProfile(settings, profile);
   return profile;
+}
+
+async function makeGatewayWarningSettings(): Promise<VaultManagerSettings> {
+  const settings = makeTempSettings();
+  const scriptDir = await fs.mkdtemp(path.join(os.tmpdir(), "vault-manager-openclaw-"));
+  const scriptPath = path.join(scriptDir, "openclaw");
+  await fs.writeFile(scriptPath, "#!/bin/sh\nexit 1\n", "utf8");
+  await fs.chmod(scriptPath, 0o755);
+  settings.openclawCommand = scriptPath;
+  return settings;
 }
 
 function assertEqual<T>(label: string, actual: T, expected: T): void {
@@ -374,7 +394,7 @@ const SCENARIOS: Scenario[] = [
   },
   {
     id: "REB-004",
-    description: "Simulation failure blocks execution",
+    description: "Preparation stops after the first simulation failure",
     profile: {
       riskProfile: "balanced",
       allowedVaults: [VAULT_A.address, VAULT_B.address]
@@ -382,12 +402,30 @@ const SCENARIOS: Scenario[] = [
     vaults: [VAULT_A, VAULT_B],
     positions: [],
     idleUsdc: "5000",
+    depsFactory: (scenario) => {
+      const base = fixtureDeps(scenario);
+      let prepareDepositCalls = 0;
+      return {
+        ...base,
+        prepareDeposit: async (vaultAddress, walletAddress, amount) => {
+          prepareDepositCalls += 1;
+          return fixturePreparedOperation({
+            kind: "deposit",
+            vaultAddress,
+            walletAddress,
+            amount,
+            succeed: prepareDepositCalls > 1
+          });
+        }
+      };
+    },
     expect(result) {
       assertEqual("status", result.status, "blocked");
       const failed = result.operations.find((operation) => !operation.simulationOk);
       if (!failed) {
         throw new Error("expected at least one failed operation in blocked run");
       }
+      assertEqual("operation count", result.operations.length, 1);
     }
   },
   {
@@ -432,16 +470,89 @@ const SCENARIOS: Scenario[] = [
         }
       }
     }
+  },
+  {
+    id: "REB-008",
+    description: "Turnover cap blocks instead of clipping",
+    profile: {
+      riskProfile: "balanced",
+      allowedVaults: [VAULT_A.address, VAULT_B.address]
+    },
+    vaults: [VAULT_A, VAULT_B],
+    positions: [],
+    idleUsdc: "20000",
+    expect(result) {
+      assertEqual("status", result.status, "blocked");
+      assertContainsReason(result, "exceeds the configured cap");
+      assertTrue("planned actions", result.actions.length > 0);
+      assertEqual("prepared operations", result.operations.length, 0);
+      if (toUsdc(result.metrics.totalPlannedTurnoverUsdc) <= toUsdc(result.metrics.turnoverCapUsdc)) {
+        throw new Error(
+          `expected proposed turnover to exceed cap, got ${result.metrics.totalPlannedTurnoverUsdc} <= ${result.metrics.turnoverCapUsdc}`
+        );
+      }
+    }
+  },
+  {
+    id: "REB-009",
+    description: "Unsupported vault and market positions block explicitly",
+    profile: {
+      riskProfile: "balanced",
+      allowedVaults: [VAULT_A.address, VAULT_B.address]
+    },
+    vaults: [VAULT_A, VAULT_B],
+    positions: [
+      { vaultAddress: VAULT_A.address, vaultName: VAULT_A.name, suppliedUsdc: "5000" },
+      { vaultAddress: VAULT_D.address, vaultName: VAULT_D.name, suppliedUsdc: "500" }
+    ],
+    marketPositions: [
+      {
+        marketAddress: "0xfeedfeedfeedfeedfeedfeedfeedfeedfeedfeed",
+        suppliedUsd: "100"
+      }
+    ],
+    idleUsdc: "1000",
+    expect(result) {
+      assertEqual("status", result.status, "blocked");
+      assertContainsReason(result, "outside the approved USDC vault allowlist");
+      assertContainsReason(result, "non-vault Morpho market position");
+      assertEqual("prepared operations", result.operations.length, 0);
+    }
+  },
+  {
+    id: "REB-010",
+    description: "Top vault set changes materially trigger a rebalance",
+    profile: {
+      riskProfile: "balanced",
+      allowedVaults: [VAULT_A.address, VAULT_B.address, VAULT_C.address, VAULT_D.address]
+    },
+    vaults: [VAULT_A, VAULT_B, VAULT_C, VAULT_D],
+    positions: [
+      { vaultAddress: VAULT_A.address, vaultName: VAULT_A.name, suppliedUsdc: "4950" },
+      { vaultAddress: VAULT_B.address, vaultName: VAULT_B.name, suppliedUsdc: "3300" },
+      { vaultAddress: VAULT_C.address, vaultName: VAULT_C.name, suppliedUsdc: "1550" },
+      { vaultAddress: VAULT_D.address, vaultName: VAULT_D.name, suppliedUsdc: "100" }
+    ],
+    idleUsdc: "0",
+    expect(result) {
+      assertEqual("status", result.status, "planned");
+      if (Number(result.metrics.maxObservedDriftPct) >= Number(result.metrics.driftThresholdPct)) {
+        throw new Error(
+          `expected drift to remain below threshold, got ${result.metrics.maxObservedDriftPct}% >= ${result.metrics.driftThresholdPct}%`
+        );
+      }
+      const withdrewFromTopSetChange = result.actions.some(
+        (action) => action.kind === "withdraw" && action.vaultAddress === VAULT_D.address
+      );
+      assertTrue("withdraw from changed top set", withdrewFromTopSetChange);
+    }
   }
 ];
 
 async function runScenario(scenario: Scenario): Promise<void> {
   const settings = makeTempSettings();
   const profile = await materializeProfile(settings, scenario);
-  const deps =
-    scenario.id === "REB-004"
-      ? fixtureDepsWithSimulationFailure(scenario)
-      : fixtureDeps(scenario);
+  const deps = scenario.depsFactory ? scenario.depsFactory(scenario) : fixtureDeps(scenario);
 
   const result = await runRebalance(settings, profile.profileId, "dry-run", deps);
   await scenario.expect(result);
@@ -611,6 +722,46 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
       assertFalse("preflight.ok", result.ok);
       const hasMissingOpenclaw = result.issues.some((issue) => issue.code === "missing_openclaw");
       assertTrue("missing_openclaw_issue", hasMissingOpenclaw, JSON.stringify(result.issues));
+    }
+  },
+  {
+    id: "CFG-003",
+    description: "Gateway absence emits remediation-friendly warning",
+    async run() {
+      const settings = await makeGatewayWarningSettings();
+      const result = await runPreflightChecks(settings);
+      assertFalse("preflight.ok", result.ok);
+      const gatewayIssue = result.issues.find((issue) => issue.code === "openclaw_gateway_unreachable");
+      assertTrue("gateway_issue_present", Boolean(gatewayIssue), JSON.stringify(result.issues));
+      if (!gatewayIssue) throw new Error("unreachable");
+      if (!gatewayIssue.message.includes("daemon")) {
+        throw new Error(`expected daemon guidance in gateway message, got ${JSON.stringify(gatewayIssue.message)}`);
+      }
+      if (!gatewayIssue.remediation?.some((line) => line.includes("gateway status"))) {
+        throw new Error(`expected gateway status remediation, got ${JSON.stringify(gatewayIssue.remediation)}`);
+      }
+      assertFalse("gatewayReachable", result.checked.gatewayReachable);
+    }
+  },
+  {
+    id: "CFG-004",
+    description: "Cron presets and risk config render deterministically",
+    async run() {
+      assertEqual("hourly", CRON_SCHEDULE_PRESETS.hourly.cronExpression, "0 * * * *");
+      assertEqual("every6Hours", CRON_SCHEDULE_PRESETS.every6Hours.cronExpression, "0 */6 * * *");
+      assertEqual("daily", CRON_SCHEDULE_PRESETS.daily.cronExpression, "0 0 * * *");
+      assertEqual("weekdays", CRON_SCHEDULE_PRESETS.weekdays.cronExpression, "0 0 * * 1-5");
+      assertEqual("weekday schedule label", describeCronSchedule("0 0 * * 1-5"), "Weekdays (0 0 * * 1-5)");
+
+      const riskJson = formatRiskPresetConfig(RISK_PRESETS.balanced);
+      const parsed = JSON.parse(riskJson) as {
+        id: string;
+        maxVaults: number;
+        scoreWeights: { apy: number };
+      };
+      assertEqual("risk id", parsed.id, "balanced");
+      assertEqual("risk maxVaults", parsed.maxVaults, 3);
+      assertEqual("risk apy weight", parsed.scoreWeights.apy, 1);
     }
   },
   {

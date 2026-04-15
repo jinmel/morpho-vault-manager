@@ -12,13 +12,74 @@ import { runRebalance, type RebalanceRunResult } from "../lib/rebalance.js";
 import { buildApiKeyCreateCommand, buildWalletCreateCommand, runOwsPolicyCreate } from "../lib/ows.js";
 import { loadProfile, saveProfile } from "../lib/profile.js";
 import { renderAgentInstructions } from "../lib/template.js";
-import type { CliLogger, ConfigureResult, VaultManagerProfile, VaultManagerSettings } from "../lib/types.js";
+import type {
+  CliLogger,
+  ConfigureResult,
+  RiskPreset,
+  VaultManagerProfile,
+  VaultManagerSettings
+} from "../lib/types.js";
 
 type ConfigureContext = {
   settings: VaultManagerSettings;
   logger?: CliLogger;
   profileId: string;
 };
+
+type CronSchedulePresetId = "hourly" | "every6Hours" | "daily" | "weekdays";
+type CronScheduleSelection = CronSchedulePresetId | "custom";
+
+type CronSchedulePreset = {
+  id: CronSchedulePresetId;
+  label: string;
+  cronExpression: string;
+  description: string;
+};
+
+export const CRON_SCHEDULE_PRESETS: Record<CronSchedulePresetId, CronSchedulePreset> = {
+  hourly: {
+    id: "hourly",
+    label: "Hourly",
+    cronExpression: "0 * * * *",
+    description: "Run once per hour at minute 0."
+  },
+  every6Hours: {
+    id: "every6Hours",
+    label: "Every 6 hours",
+    cronExpression: "0 */6 * * *",
+    description: "Run four times per day on a 6 hour cadence."
+  },
+  daily: {
+    id: "daily",
+    label: "Daily",
+    cronExpression: "0 0 * * *",
+    description: "Run once per day at midnight."
+  },
+  weekdays: {
+    id: "weekdays",
+    label: "Weekdays",
+    cronExpression: "0 0 * * 1-5",
+    description: "Run Monday through Friday at midnight."
+  }
+};
+
+export function formatRiskPresetConfig(riskPreset: RiskPreset): string {
+  return JSON.stringify(riskPreset, null, 2);
+}
+
+export function describeCronSchedule(cronExpression: string): string {
+  const preset = Object.values(CRON_SCHEDULE_PRESETS).find(
+    (candidate) => candidate.cronExpression === cronExpression
+  );
+  return preset ? `${preset.label} (${preset.cronExpression})` : `Custom (${cronExpression})`;
+}
+
+function cronScheduleSelectionForExpression(expression: string): CronScheduleSelection {
+  const preset = Object.values(CRON_SCHEDULE_PRESETS).find(
+    (candidate) => candidate.cronExpression === expression
+  );
+  return preset ? preset.id : "custom";
+}
 
 function fail(message: string): never {
   p.cancel(message);
@@ -78,12 +139,45 @@ function workspaceDirForAgent(settings: VaultManagerSettings, agentId: string): 
 
 async function preflight(settings: VaultManagerSettings): Promise<void> {
   const result = await runPreflightChecks(settings);
-  if (!result.ok) {
-    fail(result.issues.map((issue) => issue.message).join("\n"));
+  const gatewayIssue = result.issues.find((issue) => issue.code === "openclaw_gateway_unreachable");
+  const hardIssues = result.issues.filter((issue) => issue.code !== "openclaw_gateway_unreachable");
+
+  if (hardIssues.length > 0) {
+    fail(hardIssues.map((issue) => issue.message).join("\n"));
+  }
+
+  if (gatewayIssue) {
+    await p.note(
+      [
+        gatewayIssue.message,
+        "",
+        "Remediation:",
+        ...(gatewayIssue.remediation ?? [
+          "Start or daemonize the OpenClaw gateway before enabling cron.",
+          "Verify the daemon with: openclaw gateway status",
+          "Rerun configure after the gateway stays reachable."
+        ]).map((line) => `- ${line}`),
+        "",
+        "Configure can continue for onboarding and profile creation, but cron setup will fail until the gateway is reachable."
+      ].join("\n"),
+      "Gateway Warning"
+    );
+
+    const continueAnyway = requiredBoolean(
+      await p.confirm({
+        message: "Continue configure without a reachable OpenClaw gateway?",
+        initialValue: false
+      }),
+      "gateway continue confirmation"
+    );
+
+    if (!continueAnyway) {
+      fail("Start the OpenClaw gateway daemon, then rerun configure.");
+    }
   }
 }
 
-async function promptWallet(existing?: VaultManagerProfile, settings?: VaultManagerSettings): Promise<{
+async function promptWallet(settings: VaultManagerSettings, existing?: VaultManagerProfile): Promise<{
   walletMode: "created" | "existing";
   walletRef: string;
   walletAddress: string;
@@ -118,11 +212,14 @@ async function promptWallet(existing?: VaultManagerProfile, settings?: VaultMana
     );
 
     await p.note(
-      `Run this command in another shell, complete the OWS prompts, then return here:\n\n${buildWalletCreateCommand(
-        settings!,
-        walletName
-      )}`,
-      "Create Wallet"
+      [
+        "Manual step 1/2: create the OWS wallet in your own shell so the plugin never handles owner credentials.",
+        "",
+        buildWalletCreateCommand(settings, walletName),
+        "",
+        "Return here after the wallet exists and paste the public address below."
+      ].join("\n"),
+      "Wallet Setup"
     );
 
     const created = requiredBoolean(await p.confirm({
@@ -153,6 +250,14 @@ async function promptWallet(existing?: VaultManagerProfile, settings?: VaultMana
       walletAddress: getAddress(walletAddress)
     };
   }
+
+  await p.note(
+    [
+      "Manual step 1/2: point the wizard at an existing OWS wallet reference and confirm the public address.",
+      "No wallet import happens inside the plugin, and no recovery material is collected here."
+    ].join("\n"),
+    "Wallet Setup"
+  );
 
   const walletRef = requiredString(
     await p.text({
@@ -386,6 +491,46 @@ async function promptModelSelection(existing?: string): Promise<string | undefin
   return value.length > 0 ? value : undefined;
 }
 
+async function promptCronSchedule(
+  settings: VaultManagerSettings,
+  existingExpression?: string,
+  defaultCron?: string
+): Promise<string> {
+  const initialValue = cronScheduleSelectionForExpression(existingExpression ?? defaultCron ?? settings.defaultCron);
+  const selection = requiredString(
+    await p.select({
+      message: "Cron schedule",
+      initialValue,
+      options: [
+        ...Object.values(CRON_SCHEDULE_PRESETS).map((preset) => ({
+          value: preset.id,
+          label: preset.label,
+          hint: `${preset.description} ${preset.cronExpression}`
+        })),
+        {
+          value: "custom",
+          label: "Custom cron expression",
+          hint: "Enter an advanced cron expression manually."
+        }
+      ]
+    }),
+    "cron schedule"
+  ) as CronScheduleSelection;
+
+  if (selection !== "custom") {
+    return CRON_SCHEDULE_PRESETS[selection].cronExpression;
+  }
+
+  return requiredString(
+    await p.text({
+      message: "Custom cron expression",
+      placeholder: defaultCron ?? settings.defaultCron,
+      defaultValue: existingExpression ?? defaultCron ?? ""
+    }),
+    "cron expression"
+  );
+}
+
 async function runValidationDryRun(
   settings: VaultManagerSettings,
   profileId: string
@@ -442,7 +587,7 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
 
   await preflight(settings);
 
-  const wallet = await promptWallet(existing.profile ?? undefined, settings);
+  const wallet = await promptWallet(settings, existing.profile ?? undefined);
 
   const backedUp = requiredBoolean(await p.confirm({
     message: "Have you backed up the wallet recovery material and confirmed you understand the owner credential must stay out of the agent?",
@@ -465,6 +610,16 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     }),
     "risk profile"
   ) as keyof typeof RISK_PRESETS;
+
+  const riskPreset = RISK_PRESETS[riskProfile];
+  await p.note(
+    [
+      `Selected risk profile: ${riskPreset.label}`,
+      "Machine-readable risk config:",
+      formatRiskPresetConfig(riskPreset)
+    ].join("\n"),
+    "Risk Config"
+  );
 
   const vaultsInput = optionalString(
     await p.text({
@@ -498,14 +653,7 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     "cron delivery mode"
   ) as "announce" | "none";
 
-  const cronExpression = requiredString(
-    await p.text({
-      message: "Cron expression",
-      placeholder: settings.defaultCron,
-      defaultValue: existing.profile?.cronExpression ?? settings.defaultCron
-    }),
-    "cron expression"
-  );
+  const cronExpression = await promptCronSchedule(settings, existing.profile?.cronExpression, settings.defaultCron);
 
   const timezone = requiredString(
     await p.text({
@@ -516,7 +664,15 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     "cron timezone"
   );
 
-  const riskPreset = RISK_PRESETS[riskProfile];
+  await p.note(
+    [
+      `Schedule: ${describeCronSchedule(cronExpression)}`,
+      `Timezone: ${timezone}`,
+      `Machine-readable cron expression: ${cronExpression}`
+    ].join("\n"),
+    "Cron Schedule"
+  );
+
   const defaultTokenEnvVar = tokenEnvVarForProfile(settings, profileId);
   const defaultTokenSourceForProfile: TokenSource =
     settings.defaultTokenSource.kind === "env"
@@ -571,7 +727,7 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
 
   await p.note(
     [
-      "Create the OWS API key manually so the token never passes through the plugin process.",
+      "Manual step 2/2: create the OWS API key yourself so the token never passes through the plugin process.",
       "",
       buildApiKeyCreateCommand({
         settings,
@@ -682,6 +838,9 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
       `Workspace: ${workspaceDir}`,
       `Agent: ${agentId}`,
       `Cron job: ${profile.cronJobId}`,
+      `Wallet mode: ${profile.walletMode}`,
+      `Schedule: ${describeCronSchedule(profile.cronExpression)}`,
+      `Risk config: ${formatRiskPresetConfig(profile.riskPreset)}`,
       `Token source: ${tokenSourceDescription}`,
       `Model: ${modelPreference ?? "(default OpenClaw routing)"}`
     ].join("\n"),
@@ -731,7 +890,9 @@ export async function showStatus(settings: VaultManagerSettings, profileId: stri
     profileId: profile.profileId,
     walletRef: profile.walletRef,
     walletAddress: profile.walletAddress,
+    walletMode: profile.walletMode,
     riskProfile: profile.riskProfile,
+    riskPreset: profile.riskPreset,
     allowedVaults: profile.allowedVaults,
     tokenEnvVar: profile.tokenEnvVar,
     tokenSource: describeTokenSource(effectiveSource),
@@ -741,6 +902,8 @@ export async function showStatus(settings: VaultManagerSettings, profileId: stri
     modelPreference: profile.modelPreference ?? null,
     workspaceDir: profile.workspaceDir,
     cronJobId: profile.cronJobId,
+    cronExpression: profile.cronExpression,
+    timezone: profile.timezone,
     cronKnownToGateway: Boolean(cronJob),
     cronEnabled: profile.cronEnabled,
     notifications: profile.notifications,
@@ -759,7 +922,10 @@ export async function showStatus(settings: VaultManagerSettings, profileId: stri
   await p.note(
     [
       `Wallet: ${summary.walletRef} (${summary.walletAddress})`,
+      `Wallet mode: ${summary.walletMode}`,
       `Risk profile: ${summary.riskProfile}`,
+      `Schedule: ${describeCronSchedule(summary.cronExpression)} (${summary.timezone})`,
+      `Risk config: ${formatRiskPresetConfig(summary.riskPreset)}`,
       `Allowed vaults: ${summary.allowedVaults.length}`,
       `Token source: ${summary.tokenSource} (${summary.tokenReady ? "ready" : `unavailable: ${summary.tokenReadyError}`})`,
       `Agent: ${summary.agentId}`,

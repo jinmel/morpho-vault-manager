@@ -3,7 +3,7 @@
   "project": "openclaw-vault-manager",
   "lastUpdated": "2026-04-15",
   "overallStatus": "ready_for_review",
-  "currentFocus": "live_path_verification_complete",
+  "currentFocus": "spec_conformance_fixes_complete",
   "currentPlan": {
     "id": "bootstrap-harness",
     "path": "docs/exec-plans/active/bootstrap-harness.md",
@@ -67,12 +67,17 @@
     {
       "id": "end_to_end_eval_runner",
       "status": "completed",
-      "notes": "CFG-001/002, WAL-001, CRN-001/002, REB-001..REB-004, OBS-001, POL-002, and POL-003 are all executable via scripts/check/evals. POL-001 remains an operator-visible confirmation (no extractable in-process assertion)."
+      "notes": "CFG-001..CFG-004, WAL-001, CRN-001/002, REB-001..REB-004, REB-008..REB-010, OBS-001, POL-002, and POL-003 are executable via scripts/check/evals. POL-001 remains an operator-visible confirmation (no extractable in-process assertion). Live-path scenarios REB-005..REB-007 remain script-driven."
     },
     {
       "id": "structured_run_logging",
       "status": "completed",
       "notes": "runRebalance emits JSONL phase events (start/read/plan/prepare/execute/verify/complete/error) via src/lib/run-logger.ts with secret redaction. The result now carries logPath alongside receiptPath."
+    },
+    {
+      "id": "docs_spec_alignment",
+      "status": "completed",
+      "notes": "docs/openclaw-vault-manager-spec.md, ARCHITECTURE.md, and SECURITY.md now document the intentional out-of-process OWS API-key provisioning path and place status/pause/resume/run-now in Phase 1 to match shipped behavior."
     }
   ],
   "checks": [
@@ -110,7 +115,7 @@
       "id": "eval_runner",
       "path": "scripts/check/evals",
       "status": "pass",
-      "notes": "Fixture-driven scenarios REB-001 through REB-004 execute against runRebalance with injected Morpho read deps and pass in CI."
+      "notes": "Fixture-driven configure and rebalance scenarios now cover REB-001 through REB-004 plus REB-008 through REB-010 with injected deps and pass locally."
     },
     {
       "id": "plugin_typecheck",
@@ -121,8 +126,8 @@
     {
       "id": "configure_preflight",
       "path": "scripts/check/configure",
-      "status": "blocked",
-      "notes": "The Morpho CLI invocation is fixed, but this environment still lacks openclaw and ows on PATH."
+      "status": "pass",
+      "notes": "Preflight now distinguishes hard dependency failures from gateway-availability warnings, emits remediation guidance, and allows the operator to continue intentionally when the gateway is not yet reachable."
     },
     {
       "id": "cron_readiness",
@@ -178,45 +183,6 @@
     }
   ],
   "nextActions": [
-    {
-      "id": "guard_market_positions",
-      "severity": "medium",
-      "origin": "spec-audit 2026-04-15",
-      "details": [
-        "src/lib/rebalance.ts only iterates vaultPositions; marketPositions from Morpho reads are silently dropped.",
-        "Spec §Agent Behavior Contract narrows the product to USDC vault positions only.",
-        "Add an explicit assertion or structured warning if marketPositions is non-empty so the narrow-by-design invariant is enforced, not implicit."
-      ]
-    },
-    {
-      "id": "document_manual_ows_api_key_provisioning",
-      "severity": "medium",
-      "origin": "spec-audit 2026-04-15",
-      "details": [
-        "src/cli/configure.ts prints an `ows api-key create` command for the operator to run instead of executing it, to avoid pulling the token into plugin process memory.",
-        "Spec §Configure Flow Step 2 reads as if provisioning is automated.",
-        "Reconcile by either (a) updating docs/openclaw-vault-manager-spec.md to document the manual provisioning trade-off, or (b) running the command through runCommand and immediately dropping the token into the configured SecretRef path."
-      ]
-    },
-    {
-      "id": "stop_on_first_simulation_failure",
-      "severity": "medium",
-      "origin": "spec-audit 2026-04-15",
-      "details": [
-        "src/lib/rebalance.ts records simulationOk=false and continues preparing subsequent actions in the same run.",
-        "Spec §Execution Path says the run should stop and report failure with no fallback heuristics.",
-        "Short-circuit the action loop on the first prepare/simulation failure and emit a single structured error in the run receipt + JSONL log."
-      ]
-    },
-    {
-      "id": "reconcile_phase1_scope_statement",
-      "severity": "low",
-      "origin": "spec-audit 2026-04-15",
-      "details": [
-        "pause/resume/run-now are fully implemented in src/cli/register.ts but spec §Rollout Phases still labels them Phase 2.",
-        "Update docs/openclaw-vault-manager-spec.md §Rollout Phases to move these into Phase 1 so the shipping spec matches what the plugin actually delivers."
-      ]
-    },
     {
       "id": "snapshot_inherited_model_preference",
       "severity": "low",

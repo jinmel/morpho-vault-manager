@@ -55,6 +55,7 @@ Responsibilities:
 
 - wallet lifecycle
 - API-key based agent access
+- API-key provisioning may remain manual/out-of-process in v1 to keep the raw token out of plugin process memory
 - policy enforcement
 - signing
 - future `signAndSend` support when a documented CLI surface exists
@@ -78,7 +79,7 @@ The initial assumption is `morpho-cli` plus vendored Morpho skill content.
 1. User runs `openclaw vault-manager configure`.
 2. Plugin checks for required tools and daemon assumptions.
 3. Plugin creates or imports an OWS wallet.
-4. Plugin provisions an OWS API key with Morpho-specific policy constraints.
+4. Plugin emits OWS API-key provisioning instructions with Morpho-specific policy constraints, and the operator completes token creation out-of-process so the raw token never enters plugin process memory.
 5. Plugin records the risk profile and allowed-vault config.
 6. Plugin offers funding guidance and an optional "continue once funded" balance poll against Morpho token reads.
 7. Plugin offers optional model-routing preference for the dedicated agent.

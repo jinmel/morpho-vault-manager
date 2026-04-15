@@ -39,6 +39,7 @@ We do not assume the prompt alone will prevent unsafe execution.
 - Scoped to one wallet for v1
 - Attached to one or more policies
 - The only credential the agent may use
+- In v1, the raw token is provisioned out-of-process so the plugin never needs to load it into process memory
 
 ### Broadcast Path
 
@@ -79,6 +80,7 @@ Required for v1:
 - API tokens must be resolved through the configured token source (`env` or `file`), never hardcoded in profile JSON or plugin config.
 - `file` sources are intended for mounted-secret setups (Docker/k8s/systemd EnvironmentFile). File contents are read at execution time and never copied into the profile.
 - Profile files may contain public addresses, wallet IDs, vault allowlists, thresholds, cron metadata, and the token source descriptor (kind + identifier), never the token value itself.
+- The configure flow should emit the OWS API-key provisioning command and then accept only the resulting token source descriptor, not the raw token.
 
 ## Execution Guardrails
 

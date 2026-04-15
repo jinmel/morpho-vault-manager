@@ -228,6 +228,80 @@ function targetCashBuffer(totalManaged: bigint, preset: RiskPreset): bigint {
   return configured > totalManaged ? totalManaged : configured;
 }
 
+function describePosition(position: MorphoVaultPosition): string {
+  const amount = position.supplied?.value ?? "0";
+  const name = position.vault?.name?.trim() || position.vault.address;
+  return `${name} (${amount} USDC)`;
+}
+
+function collectUnsupportedPositionReasons(params: {
+  positionsResponse: MorphoPositionsResponse;
+  allowedVaultSet: Set<string>;
+}): {
+  blockers: string[];
+  unsupportedVaultRejections: Array<{ address: string; reason: string }>;
+  supportedVaultPositions: MorphoVaultPosition[];
+} {
+  const blockers: string[] = [];
+  const unsupportedVaultRejections: Array<{ address: string; reason: string }> = [];
+  const supportedVaultPositions: MorphoVaultPosition[] = [];
+  const unsupportedVaultPositions: MorphoVaultPosition[] = [];
+
+  for (const position of params.positionsResponse.vaultPositions) {
+    const address = getAddress(position.vault.address);
+    if (params.allowedVaultSet.has(address)) {
+      supportedVaultPositions.push(position);
+    } else {
+      unsupportedVaultPositions.push(position);
+      unsupportedVaultRejections.push({
+        address,
+        reason: `Vault position ${describePosition(position)} is outside the approved vault allowlist.`
+      });
+    }
+  }
+
+  if (unsupportedVaultPositions.length > 0) {
+    blockers.push(
+      `Found ${unsupportedVaultPositions.length} unsupported Morpho vault position(s) outside the approved USDC vault allowlist: ${unsupportedVaultPositions
+        .map(describePosition)
+        .join(", ")}.`
+    );
+  }
+
+  if ((params.positionsResponse.marketPositions?.length ?? 0) > 0) {
+    blockers.push(
+      `Found ${params.positionsResponse.marketPositions.length} non-vault Morpho market position(s); this agent only manages USDC vault positions.`
+    );
+  }
+
+  return {
+    blockers,
+    unsupportedVaultRejections,
+    supportedVaultPositions
+  };
+}
+
+function topVaultSetChangedMaterially(params: {
+  selected: RankedCandidate[];
+  positions: MorphoVaultPosition[];
+}): { changed: boolean; detail?: string } {
+  const selectedAddresses = new Set(params.selected.map((vault) => vault.address));
+  const changedPositions = params.positions.filter((position) => {
+    const address = getAddress(position.vault.address);
+    const supplied = toUsdcUnits(position.supplied.value);
+    return supplied >= MIN_ACTION_USDC && !selectedAddresses.has(address);
+  });
+
+  if (changedPositions.length === 0) {
+    return { changed: false };
+  }
+
+  return {
+    changed: true,
+    detail: changedPositions.map(describePosition).join(", ")
+  };
+}
+
 function buildRankedCandidates(vaults: MorphoVaultDetail[], preset: RiskPreset): {
   ranked: RankedCandidate[];
   rejected: Array<{ address: string; reason: string }>;
@@ -355,20 +429,6 @@ function trimActions(actions: ActionDraft[]): ActionDraft[] {
   return actions.filter((action) => action.amount >= MIN_ACTION_USDC);
 }
 
-function scaleActionsForTurnover(actions: ActionDraft[], turnoverCap: bigint): ActionDraft[] {
-  if (turnoverCap <= 0n) return [];
-  const desired = plannedTurnover(actions);
-  if (desired <= turnoverCap) return actions;
-
-  const scaled = actions.map((action) => ({
-    ...action,
-    amount: scaleAmount(action.amount, turnoverCap, desired),
-    clippedByTurnover: true
-  }));
-
-  return trimActions(scaled);
-}
-
 function capDepositsToAvailableCash(actions: ActionDraft[], currentIdle: bigint, targetIdle: bigint): ActionDraft[] {
   const withdraws = sum(actions.filter((action) => action.kind === "withdraw").map((action) => action.amount));
   const deposits = actions.filter((action) => action.kind === "deposit");
@@ -381,7 +441,7 @@ function capDepositsToAvailableCash(actions: ActionDraft[], currentIdle: bigint,
   const scaledDeposits = deposits.map((action) => ({
     ...action,
     amount: scaleAmount(action.amount, available, desiredDeposits),
-    clippedByTurnover: true
+    clippedByTurnover: false
   }));
 
   const depositMap = new Map(scaledDeposits.map((action) => [action.vaultAddress, action]));
@@ -498,6 +558,9 @@ async function prepareActionOperations(
           : await deps.prepareWithdraw(action.vaultAddress, profile.walletAddress, amountUsdc);
 
       operations.push(toOperationResult(action, prepared));
+      if (!operations[operations.length - 1].simulationOk) {
+        break;
+      }
     } catch (error) {
       operations.push({
         kind: action.kind,
@@ -509,6 +572,7 @@ async function prepareActionOperations(
         transactions: [],
         error: (error as Error).message
       });
+      break;
     }
   }
 
@@ -737,6 +801,7 @@ export async function runRebalance(
 
   const normalizedAllowedVaults = profile.allowedVaults.map((address) => getAddress(address));
   const allowedVaultSet = new Set(normalizedAllowedVaults);
+  const blockers: string[] = [];
   const reasons: string[] = [];
   const warnings: string[] = [];
   const execution: RebalanceRunResult["execution"] = {
@@ -828,10 +893,15 @@ export async function runRebalance(
 
   const positionsResponse = await deps.getPositions(profile.walletAddress);
   const tokenBalance = await deps.getTokenBalance(profile.walletAddress);
+  const { blockers: positionBlockers, unsupportedVaultRejections, supportedVaultPositions } =
+    collectUnsupportedPositionReasons({
+      positionsResponse,
+      allowedVaultSet
+    });
+  blockers.push(...positionBlockers);
+  rejectedVaults.push(...unsupportedVaultRejections);
 
-  const managedPositions = positionsResponse.vaultPositions.filter((position) =>
-    allowedVaultSet.has(getAddress(position.vault.address))
-  );
+  const managedPositions = supportedVaultPositions;
 
   const currentAmounts = currentAmountsFromPositions(managedPositions);
   const idleUsdc = toUsdcUnits(tokenBalance.balance.value);
@@ -853,17 +923,14 @@ export async function runRebalance(
   for (const vault of liveVaults) vaultNames.set(vault.address, vault.name);
   for (const position of managedPositions) vaultNames.set(position.vault.address, position.vault.name);
 
-  if (totalManaged === 0n) {
-    reasons.push("No USDC balance and no managed Morpho vault positions were found.");
-  }
-  if (selected.length === 0) {
-    reasons.push("No allowlisted vaults passed the current risk constraints.");
-  }
-  if (totalManaged > 0n && !drift.exceeded) {
-    reasons.push(
-      `Current allocation drift (${drift.maxObservedPct}%) is below the configured threshold (${percentString(
-        profile.riskPreset.rebalanceDriftPct * 100
-      )}%).`
+  const topVaultSetChange = topVaultSetChangedMaterially({
+    selected,
+    positions: managedPositions
+  });
+
+  if (topVaultSetChange.changed) {
+    warnings.push(
+      `Current top vault set changed materially: ${topVaultSetChange.detail}.`
     );
   }
 
@@ -875,10 +942,31 @@ export async function runRebalance(
   });
 
   const turnoverCap = parseUnits(String(profile.riskPreset.maxTurnoverUsd), USDC_DECIMALS);
-  actions = scaleActionsForTurnover(actions, turnoverCap);
+  const plannedTurnoverUsdc = plannedTurnover(actions);
+  if (plannedTurnoverUsdc > turnoverCap) {
+    blockers.push(
+      `Proposed turnover ${formatUsdc(plannedTurnoverUsdc)} USDC exceeds the configured cap of ${formatUsdc(turnoverCap)} USDC.`
+    );
+  }
   actions = capDepositsToAvailableCash(actions, idleUsdc, targetIdle);
 
-  if (actions.length === 0 && reasons.length === 0) {
+  if (blockers.length === 0) {
+    if (totalManaged === 0n) {
+      reasons.push("No USDC balance and no managed Morpho vault positions were found.");
+    }
+    if (selected.length === 0) {
+      reasons.push("No allowlisted vaults passed the current risk constraints.");
+    }
+    if (totalManaged > 0n && !drift.exceeded && !topVaultSetChange.changed) {
+      reasons.push(
+        `Current allocation drift (${drift.maxObservedPct}%) is below the configured threshold (${percentString(
+          profile.riskPreset.rebalanceDriftPct * 100
+        )}%).`
+      );
+    }
+  }
+
+  if (actions.length === 0 && reasons.length === 0 && blockers.length === 0) {
     reasons.push("The computed action set rounded down to zero after turnover and minimum-size checks.");
   }
 
@@ -888,6 +976,10 @@ export async function runRebalance(
     targetCashBufferUsdc: formatUsdc(targetIdle),
     driftExceeded: drift.exceeded,
     maxObservedDriftPct: drift.maxObservedPct,
+    topVaultSetChangedMaterially: topVaultSetChange.changed,
+    unsupportedVaultPositionCount: unsupportedVaultRejections.length,
+    marketPositionCount: positionsResponse.marketPositions.length,
+    turnoverCapExceeded: plannedTurnoverUsdc > turnoverCap,
     selectedVaults: selected.map((vault) => vault.address),
     actionCount: actions.length
   });
@@ -903,7 +995,8 @@ export async function runRebalance(
   }));
 
   let operations: RebalanceOperationResult[] = [];
-  let status: RebalanceStatus = reasons.length > 0 ? "no_op" : "planned";
+  let status: RebalanceStatus =
+    blockers.length > 0 ? "blocked" : reasons.length > 0 ? "no_op" : "planned";
 
   if (status === "planned") {
     await logger.event("prepare", "Preparing Morpho transactions", {
@@ -912,11 +1005,11 @@ export async function runRebalance(
     operations = await prepareActionOperations(profile, actions, deps);
     const failedOperation = operations.find((operation) => !operation.simulationOk || Boolean(operation.error));
     if (failedOperation) {
-      status = "blocked";
-      reasons.push(
+      blockers.push(
         failedOperation.error ??
           `Simulation failed for ${failedOperation.kind} ${failedOperation.amountUsdc} USDC on ${failedOperation.vaultAddress}.`
       );
+      status = "blocked";
       await logger.event("error", "Preparation or simulation failed", {
         vaultAddress: failedOperation.vaultAddress,
         kind: failedOperation.kind,
@@ -971,7 +1064,7 @@ export async function runRebalance(
   const result: RebalanceRunResult = {
     runId,
     mode,
-    status,
+    status: blockers.length > 0 ? "blocked" : status,
     profileId: profile.profileId,
     createdAt,
     receiptPath,
@@ -981,7 +1074,7 @@ export async function runRebalance(
     tokenEnvVar: profile.tokenEnvVar,
     tokenSource: tokenSourceDescription,
     tokenReady,
-    reasons,
+    reasons: [...blockers, ...reasons],
     warnings: [
       ...warnings,
       ...operations.flatMap((operation) =>

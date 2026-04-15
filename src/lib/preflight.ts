@@ -11,6 +11,7 @@ export type PreflightIssue = {
     | "morpho_health_check_failed"
     | "openclaw_gateway_unreachable";
   message: string;
+  remediation?: string[];
 };
 
 export type PreflightResult = {
@@ -74,7 +75,12 @@ export async function runPreflightChecks(
       issues.push({
         code: "openclaw_gateway_unreachable",
         message:
-          "OpenClaw gateway is not reachable. Cron runs inside the gateway process, so start the gateway before running configure."
+          "OpenClaw gateway is not reachable. Cron runs inside the gateway daemon, so keep the daemon running and verify it with `openclaw gateway status` before enabling cron.",
+        remediation: [
+          "Start or daemonize the OpenClaw gateway.",
+          "Verify the daemon with: openclaw gateway status",
+          "Rerun configure after the gateway stays reachable."
+        ]
       });
     }
   }
