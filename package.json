@@ -33,6 +33,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
+    "prepare": "npm run -s build",
     "prepack": "npm run -s clean && npm run -s build",
     "typecheck": "tsc --noEmit",
     "pack:dry-run": "npm pack --dry-run"
