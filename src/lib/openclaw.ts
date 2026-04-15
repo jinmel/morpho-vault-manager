@@ -10,6 +10,7 @@ export async function ensureAgent(params: {
   settings: VaultManagerSettings;
   agentId: string;
   workspaceDir: string;
+  modelPreference?: string;
 }): Promise<{ ok: boolean; created: boolean; stdout: string; stderr: string }> {
   const result = await runCommand(params.settings.openclawCommand, [
     "agents",
@@ -17,6 +18,7 @@ export async function ensureAgent(params: {
     params.agentId,
     "--workspace",
     params.workspaceDir,
+    ...(params.modelPreference ? ["--model", params.modelPreference] : []),
     "--non-interactive",
     "--json"
   ]);
@@ -51,6 +53,7 @@ export async function upsertCronJob(params: {
     "isolated",
     "--agent",
     params.profile.agentId,
+    ...(params.profile.modelPreference ? ["--model", params.profile.modelPreference] : []),
     "--message",
     [
       `Execute the Morpho vault rebalance program in AGENTS.md for profile ${params.profile.profileId}.`,

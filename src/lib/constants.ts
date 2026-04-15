@@ -16,7 +16,13 @@ export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
     maxTurnoverUsd: 5000,
     cashBufferUsd: 250,
     minimumVaultTvlUsd: 5_000_000,
-    rewardPreference: "ignore"
+    rewardPreference: "ignore",
+    scoreWeights: {
+      apy: 0.6,
+      tvl: 0.8,
+      fee: 0.8,
+      rewardsPenalty: 0.5
+    }
   },
   balanced: {
     id: "balanced",
@@ -28,7 +34,13 @@ export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
     maxTurnoverUsd: 10_000,
     cashBufferUsd: 100,
     minimumVaultTvlUsd: 2_500_000,
-    rewardPreference: "neutral"
+    rewardPreference: "neutral",
+    scoreWeights: {
+      apy: 1.0,
+      tvl: 0.5,
+      fee: 0.6,
+      rewardsPenalty: 0.0
+    }
   },
   aggressive: {
     id: "aggressive",
@@ -40,6 +52,12 @@ export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
     maxTurnoverUsd: 25_000,
     cashBufferUsd: 50,
     minimumVaultTvlUsd: 1_000_000,
-    rewardPreference: "include"
+    rewardPreference: "include",
+    scoreWeights: {
+      apy: 1.4,
+      tvl: 0.3,
+      fee: 0.4,
+      rewardsPenalty: 0.0
+    }
   }
 };

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../common.sh
+source "$SCRIPT_DIR/../common.sh"
+
+ensure_tmp_dirs
+
+log "running end-to-end live path validation (read-only)"
+
+npx tsx "$ROOT_DIR/src/bin/live-path.ts" "$@"

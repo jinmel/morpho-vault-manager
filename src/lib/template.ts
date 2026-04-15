@@ -27,6 +27,7 @@ Manage the configured wallet as a constrained Morpho vault allocator on Base. Th
 - Chain: Base (${profile.chain})
 - Asset: USDC (${profile.usdcAddress})
 - OWS token env var: ${profile.tokenEnvVar}
+- Model preference: ${profile.modelPreference ?? "(inherit OpenClaw default routing)"}
 
 ## Risk Profile
 

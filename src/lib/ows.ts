@@ -86,7 +86,7 @@ function parseOwsSignTxPayload(stdout: string): OwsSignTxPayload {
 export async function signTransactionWithOws(params: {
   settings: VaultManagerSettings;
   walletRef: string;
-  tokenEnvVar: string;
+  token: string;
   chain: "base";
   unsignedTransactionHex: string;
 }): Promise<{
@@ -96,14 +96,14 @@ export async function signTransactionWithOws(params: {
   payload: OwsSignTxPayload;
   error?: string;
 }> {
-  const token = process.env[params.tokenEnvVar];
+  const token = params.token;
   if (!token) {
     return {
       ok: false,
       stdout: "",
       stderr: "",
       payload: {},
-      error: `Missing required token environment variable ${params.tokenEnvVar}.`
+      error: "No OWS API token was resolved before calling sign."
     };
   }
 

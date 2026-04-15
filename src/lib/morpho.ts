@@ -11,10 +11,11 @@ export type MorphoVaultSummary = {
   address: string;
   chain: string;
   name: string;
-  version: string;
+  version?: string;
   asset: {
     address: string;
     symbol: string;
+    decimals?: number;
   };
   apyPct: string;
   feePct: string;
@@ -67,6 +68,7 @@ export type MorphoTokenBalanceResponse = {
   asset: {
     address: string;
     symbol: string;
+    decimals?: number;
   };
   balance: {
     symbol: string;
@@ -93,7 +95,7 @@ export type MorphoUnsignedTransaction = {
   data: `0x${string}`;
   value: string;
   chainId: string;
-  description?: string;
+  description: string;
 };
 
 export type MorphoPreparedWarning = {
@@ -113,20 +115,21 @@ export type MorphoPreparedOperation = {
   totalGasUsed?: string;
   outcome?: Record<string, unknown>;
   warnings?: MorphoPreparedWarning[];
+  preview?: Record<string, unknown>;
+  analysisContext?: Record<string, unknown>;
 };
 
 export type MorphoSimulationResponse = {
   chain: string;
   allSucceeded?: boolean;
   totalGasUsed?: string;
-  results?: Array<Record<string, unknown>>;
+  executionResults?: Array<Record<string, unknown>>;
   outcome?: Record<string, unknown>;
   warnings?: MorphoPreparedWarning[];
 };
 
 function trimJsonLike(text: string): string {
-  const value = text.trim();
-  return value;
+  return text.trim();
 }
 
 function tryParseErrorShape(text: string): string | null {
@@ -160,7 +163,10 @@ async function runMorphoJsonCommand<T>(
   settings: VaultManagerSettings,
   args: string[]
 ): Promise<T> {
-  const result = await runCommand(settings.morphoCliCommand, [...settings.morphoCliArgsPrefix, ...args]);
+  const result = await runCommand(settings.morphoCliCommand, [
+    ...settings.morphoCliArgsPrefix,
+    ...args
+  ]);
 
   if (result.code !== 0) {
     throw morphoError(result.stdout, result.stderr, `morpho command failed: ${args.join(" ")}`);
@@ -168,11 +174,21 @@ async function runMorphoJsonCommand<T>(
 
   const stdout = trimJsonLike(result.stdout);
   try {
-    return JSON.parse(stdout) as T;
+    const parsed = JSON.parse(stdout) as T & MorphoCommandErrorShape;
+    if (parsed && typeof parsed === "object") {
+      const errorShape = parsed as MorphoCommandErrorShape;
+      if (typeof errorShape.error === "string" && typeof errorShape.message === "string") {
+        throw new Error(errorShape.message || errorShape.error);
+      }
+    }
+    return parsed as T;
   } catch (error) {
-    throw new Error(
-      `Failed to parse morpho-cli JSON for "${args.join(" ")}": ${(error as Error).message}\n${stdout}`
-    );
+    if (error instanceof SyntaxError) {
+      throw new Error(
+        `Failed to parse morpho-cli JSON for "${args.join(" ")}": ${error.message}\n${stdout}`
+      );
+    }
+    throw error;
   }
 }
 
@@ -184,12 +200,48 @@ export async function runMorphoHealthCheck(settings: VaultManagerSettings): Prom
   return result.code === 0;
 }
 
+function normalizeVaultShape(raw: Record<string, unknown>): MorphoVaultDetail {
+  const asset = (raw.asset ?? {}) as Record<string, unknown>;
+  const tvl = raw.tvl;
+  const tvlUsd = typeof raw.tvlUsd === "string" ? raw.tvlUsd : String(raw.tvlUsd ?? "0");
+
+  const tvlBlock: MorphoVaultSummary["tvl"] =
+    tvl && typeof tvl === "object"
+      ? {
+          symbol: String((tvl as Record<string, unknown>).symbol ?? asset.symbol ?? ""),
+          value: String((tvl as Record<string, unknown>).value ?? "")
+        }
+      : {
+          symbol: String(asset.symbol ?? ""),
+          value: typeof tvl === "string" ? tvl : String(tvl ?? "0")
+        };
+
+  return {
+    address: getAddress(String(raw.address)),
+    chain: String(raw.chain ?? "base"),
+    name: String(raw.name ?? ""),
+    version: raw.version ? String(raw.version) : undefined,
+    asset: {
+      address: getAddress(String(asset.address)),
+      symbol: String(asset.symbol ?? ""),
+      decimals: typeof asset.decimals === "number" ? asset.decimals : undefined
+    },
+    apyPct: typeof raw.apyPct === "string" ? raw.apyPct : String(raw.apyPct ?? "0"),
+    feePct: typeof raw.feePct === "string" ? raw.feePct : String(raw.feePct ?? "0"),
+    tvl: tvlBlock,
+    tvlUsd,
+    allocations: Array.isArray(raw.allocations)
+      ? (raw.allocations as Array<Record<string, unknown>>)
+      : undefined
+  };
+}
+
 export async function getMorphoVault(
   settings: VaultManagerSettings,
   chain: "base" | "ethereum",
   address: string
 ): Promise<MorphoVaultDetail> {
-  const vault = await runMorphoJsonCommand<MorphoVaultDetail>(settings, [
+  const response = await runMorphoJsonCommand<Record<string, unknown>>(settings, [
     "get-vault",
     "--chain",
     chain,
@@ -197,13 +249,59 @@ export async function getMorphoVault(
     getAddress(address)
   ]);
 
+  const vaultPayload =
+    response && typeof response.vault === "object" && response.vault !== null
+      ? (response.vault as Record<string, unknown>)
+      : response;
+
+  return normalizeVaultShape(vaultPayload);
+}
+
+function normalizeVaultPosition(raw: Record<string, unknown>): MorphoVaultPosition | null {
+  const vaultRaw =
+    (raw.vault as Record<string, unknown> | undefined) ??
+    (raw.vaultInfo as Record<string, unknown> | undefined);
+  const vaultAddress =
+    typeof raw.vaultAddress === "string"
+      ? raw.vaultAddress
+      : typeof vaultRaw?.address === "string"
+      ? String(vaultRaw.address)
+      : null;
+  if (!vaultAddress) return null;
+
+  const assetRaw = (vaultRaw?.asset ?? raw.asset ?? {}) as Record<string, unknown>;
+
+  const suppliedValue =
+    typeof raw.suppliedAmount === "object" && raw.suppliedAmount !== null
+      ? String((raw.suppliedAmount as Record<string, unknown>).value ?? "0")
+      : typeof raw.supplied === "object" && raw.supplied !== null
+      ? String((raw.supplied as Record<string, unknown>).value ?? "0")
+      : typeof raw.supplyAssets === "string"
+      ? String(raw.supplyAssets)
+      : "0";
+
+  const suppliedUsd =
+    typeof raw.suppliedUsd === "string"
+      ? raw.suppliedUsd
+      : typeof raw.supplyAssetsUsd === "string"
+      ? raw.supplyAssetsUsd
+      : "0";
+
   return {
-    ...vault,
-    address: getAddress(vault.address),
-    asset: {
-      ...vault.asset,
-      address: getAddress(vault.asset.address)
-    }
+    vault: {
+      address: getAddress(vaultAddress),
+      name: String(vaultRaw?.name ?? ""),
+      version: String(vaultRaw?.version ?? ""),
+      asset: {
+        address: assetRaw.address ? getAddress(String(assetRaw.address)) : "",
+        symbol: String(assetRaw.symbol ?? "")
+      }
+    },
+    supplied: {
+      symbol: String(assetRaw.symbol ?? ""),
+      value: suppliedValue
+    },
+    suppliedUsd
   };
 }
 
@@ -212,7 +310,7 @@ export async function getMorphoPositions(
   chain: "base" | "ethereum",
   userAddress: string
 ): Promise<MorphoPositionsResponse> {
-  const response = await runMorphoJsonCommand<MorphoPositionsResponse>(settings, [
+  const response = await runMorphoJsonCommand<Record<string, unknown>>(settings, [
     "get-positions",
     "--chain",
     chain,
@@ -220,20 +318,35 @@ export async function getMorphoPositions(
     getAddress(userAddress)
   ]);
 
+  const rawPositions = Array.isArray(response.positions)
+    ? (response.positions as Array<Record<string, unknown>>)
+    : Array.isArray(response.vaultPositions)
+    ? (response.vaultPositions as Array<Record<string, unknown>>)
+    : [];
+
+  const vaultPositions = rawPositions
+    .map((entry) => normalizeVaultPosition(entry))
+    .filter((position): position is MorphoVaultPosition => position !== null);
+
+  const marketPositions = Array.isArray(response.marketPositions)
+    ? (response.marketPositions as Array<Record<string, unknown>>)
+    : [];
+
   return {
-    ...response,
-    userAddress: getAddress(response.userAddress),
-    vaultPositions: response.vaultPositions.map((position) => ({
-      ...position,
-      vault: {
-        ...position.vault,
-        address: getAddress(position.vault.address),
-        asset: {
-          ...position.vault.asset,
-          address: getAddress(position.vault.asset.address)
-        }
-      }
-    }))
+    chain: String(response.chain ?? chain),
+    userAddress: getAddress(String(response.userAddress ?? userAddress)),
+    totals: {
+      vaultCount: vaultPositions.length,
+      marketCount: marketPositions.length,
+      suppliedUsd: vaultPositions
+        .reduce((acc, position) => acc + Number(position.suppliedUsd || "0"), 0)
+        .toString(),
+      borrowedUsd: "0",
+      collateralUsd: "0",
+      netWorthUsd: "0"
+    },
+    vaultPositions,
+    marketPositions
   };
 }
 
@@ -243,7 +356,7 @@ export async function getMorphoTokenBalance(
   tokenAddress: string,
   userAddress: string
 ): Promise<MorphoTokenBalanceResponse> {
-  const response = await runMorphoJsonCommand<MorphoTokenBalanceResponse>(settings, [
+  const response = await runMorphoJsonCommand<Record<string, unknown>>(settings, [
     "get-token-balance",
     "--chain",
     chain,
@@ -253,13 +366,210 @@ export async function getMorphoTokenBalance(
     getAddress(userAddress)
   ]);
 
+  const asset = (response.asset ?? {}) as Record<string, unknown>;
+  const rawBalance = response.balance;
+  const balance: MorphoTokenBalanceResponse["balance"] =
+    typeof rawBalance === "string" || typeof rawBalance === "number"
+      ? {
+          symbol: String(asset.symbol ?? ""),
+          value: String(rawBalance)
+        }
+      : rawBalance && typeof rawBalance === "object"
+      ? {
+          symbol: String(
+            (rawBalance as Record<string, unknown>).symbol ?? asset.symbol ?? ""
+          ),
+          value: String((rawBalance as Record<string, unknown>).value ?? "0")
+        }
+      : { symbol: String(asset.symbol ?? ""), value: "0" };
+
+  const erc20 = (response.erc20Allowances ?? {}) as Record<string, unknown>;
+  const allowanceBlock = (symbol: string, value: unknown) => ({
+    symbol,
+    value: typeof value === "string" ? value : value === undefined || value === null ? "0" : String(value)
+  });
+
   return {
-    ...response,
-    userAddress: getAddress(response.userAddress),
+    chain: String(response.chain ?? chain),
+    userAddress: getAddress(String(response.userAddress ?? userAddress)),
     asset: {
-      ...response.asset,
-      address: getAddress(response.asset.address)
+      address: getAddress(String(asset.address ?? tokenAddress)),
+      symbol: String(asset.symbol ?? ""),
+      decimals: typeof asset.decimals === "number" ? asset.decimals : undefined
+    },
+    balance,
+    morphoAllowance: allowanceBlock(String(asset.symbol ?? ""), erc20.morpho),
+    bundlerAllowance: allowanceBlock(String(asset.symbol ?? ""), erc20.bundler),
+    permit2Allowance: allowanceBlock(String(asset.symbol ?? ""), erc20.permit2),
+    needsApprovalForMorpho: (erc20.morpho ?? "0") === "0",
+    needsApprovalForBundler: (erc20.bundler ?? "0") === "0"
+  };
+}
+
+function normalizePreparedTransactions(raw: unknown): MorphoUnsignedTransaction[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry, index) => {
+    const record = (entry ?? {}) as Record<string, unknown>;
+    const description =
+      typeof record.description === "string"
+        ? record.description
+        : `morpho transaction ${index}`;
+    return {
+      to: getAddress(String(record.to)),
+      data: String(record.data ?? "0x") as `0x${string}`,
+      value: typeof record.value === "string" ? record.value : String(record.value ?? "0"),
+      chainId: typeof record.chainId === "string" ? record.chainId : String(record.chainId ?? ""),
+      description
+    };
+  });
+}
+
+function normalizeWarnings(raw: unknown): MorphoPreparedWarning[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      const record = (entry ?? {}) as Record<string, unknown>;
+      return {
+        level: String(record.level ?? "info"),
+        message: String(record.message ?? ""),
+        code: typeof record.code === "string" ? record.code : undefined
+      };
+    })
+    .filter((warning) => warning.message.length > 0);
+}
+
+async function simulatePreparedTransactions(
+  settings: VaultManagerSettings,
+  chain: "base" | "ethereum",
+  from: string,
+  transactions: MorphoUnsignedTransaction[],
+  analysisContext: Record<string, unknown> | undefined
+): Promise<MorphoSimulationResponse> {
+  if (transactions.length === 0) {
+    return { chain, allSucceeded: true, executionResults: [], warnings: [] };
+  }
+
+  const args = [
+    "simulate-transactions",
+    "--chain",
+    chain,
+    "--from",
+    getAddress(from),
+    "--transactions",
+    JSON.stringify(transactions)
+  ];
+  if (analysisContext) {
+    args.push("--analysis-context", JSON.stringify(analysisContext));
+  }
+
+  const result = await runCommand(settings.morphoCliCommand, [
+    ...settings.morphoCliArgsPrefix,
+    ...args
+  ]);
+
+  if (result.code !== 0) {
+    const parsed = tryParseErrorShape(result.stdout) ?? tryParseErrorShape(result.stderr);
+    return {
+      chain,
+      allSucceeded: false,
+      executionResults: [],
+      warnings: [
+        {
+          level: "error",
+          message: parsed ?? result.stderr.trim() ?? "morpho simulate-transactions failed",
+          code: "SIMULATE_INVOCATION_FAILED"
+        }
+      ]
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(result.stdout) as MorphoSimulationResponse & {
+      error?: string;
+      message?: string;
+    };
+    if (typeof parsed.error === "string") {
+      return {
+        chain,
+        allSucceeded: false,
+        executionResults: [],
+        warnings: [
+          {
+            level: "error",
+            message: parsed.message ?? parsed.error,
+            code: "SIMULATE_ERROR"
+          }
+        ]
+      };
     }
+    return {
+      chain: String(parsed.chain ?? chain),
+      allSucceeded: typeof parsed.allSucceeded === "boolean" ? parsed.allSucceeded : false,
+      totalGasUsed: typeof parsed.totalGasUsed === "string" ? parsed.totalGasUsed : undefined,
+      executionResults: Array.isArray(parsed.executionResults) ? parsed.executionResults : [],
+      outcome: (parsed as MorphoSimulationResponse).outcome,
+      warnings: normalizeWarnings(parsed.warnings)
+    };
+  } catch (error) {
+    return {
+      chain,
+      allSucceeded: false,
+      executionResults: [],
+      warnings: [
+        {
+          level: "error",
+          message: `Failed to parse simulate-transactions output: ${(error as Error).message}`,
+          code: "SIMULATE_PARSE_ERROR"
+        }
+      ]
+    };
+  }
+}
+
+async function runPrepareWithSimulation(
+  settings: VaultManagerSettings,
+  chain: "base" | "ethereum",
+  userAddress: string,
+  rawArgs: string[]
+): Promise<MorphoPreparedOperation> {
+  const response = await runMorphoJsonCommand<Record<string, unknown>>(settings, rawArgs);
+
+  const transactions = normalizePreparedTransactions(response.transactions);
+  const warnings = normalizeWarnings(response.warnings);
+  const analysisContext =
+    response.analysisContext && typeof response.analysisContext === "object"
+      ? (response.analysisContext as Record<string, unknown>)
+      : undefined;
+
+  const simulation = await simulatePreparedTransactions(
+    settings,
+    chain,
+    userAddress,
+    transactions,
+    analysisContext
+  );
+
+  const combinedWarnings = [...warnings, ...(simulation.warnings ?? [])];
+  const hasSimulationError = combinedWarnings.some((warning) => warning.level === "error");
+
+  return {
+    operation: typeof response.operation === "string" ? response.operation : "morpho-operation",
+    chain: String(response.chain ?? chain),
+    summary: typeof response.summary === "string" ? response.summary : "",
+    requirements: Array.isArray(response.requirements)
+      ? (response.requirements as Array<Record<string, unknown>>)
+      : undefined,
+    transactions,
+    simulated: true,
+    simulationOk: simulation.allSucceeded === true && !hasSimulationError,
+    totalGasUsed: simulation.totalGasUsed,
+    outcome: simulation.outcome,
+    warnings: combinedWarnings,
+    preview:
+      response.preview && typeof response.preview === "object"
+        ? (response.preview as Record<string, unknown>)
+        : undefined,
+    analysisContext
   };
 }
 
@@ -270,7 +580,7 @@ export async function prepareMorphoDeposit(
   userAddress: string,
   amount: string
 ): Promise<MorphoPreparedOperation> {
-  const operation = await runMorphoJsonCommand<MorphoPreparedOperation>(settings, [
+  return runPrepareWithSimulation(settings, chain, userAddress, [
     "prepare-deposit",
     "--chain",
     chain,
@@ -281,8 +591,6 @@ export async function prepareMorphoDeposit(
     "--amount",
     amount
   ]);
-
-  return normalizePreparedOperation(operation);
 }
 
 export async function prepareMorphoWithdraw(
@@ -292,7 +600,7 @@ export async function prepareMorphoWithdraw(
   userAddress: string,
   amount: string
 ): Promise<MorphoPreparedOperation> {
-  const operation = await runMorphoJsonCommand<MorphoPreparedOperation>(settings, [
+  return runPrepareWithSimulation(settings, chain, userAddress, [
     "prepare-withdraw",
     "--chain",
     chain,
@@ -303,8 +611,6 @@ export async function prepareMorphoWithdraw(
     "--amount",
     amount
   ]);
-
-  return normalizePreparedOperation(operation);
 }
 
 export async function simulateMorphoTransactions(
@@ -313,24 +619,5 @@ export async function simulateMorphoTransactions(
   from: string,
   transactions: MorphoUnsignedTransaction[]
 ): Promise<MorphoSimulationResponse> {
-  return runMorphoJsonCommand<MorphoSimulationResponse>(settings, [
-    "simulate-transactions",
-    "--chain",
-    chain,
-    "--from",
-    getAddress(from),
-    "--transactions",
-    JSON.stringify(transactions)
-  ]);
-}
-
-function normalizePreparedOperation(operation: MorphoPreparedOperation): MorphoPreparedOperation {
-  return {
-    ...operation,
-    transactions: operation.transactions.map((transaction) => ({
-      ...transaction,
-      to: getAddress(transaction.to)
-    })),
-    warnings: operation.warnings ?? []
-  };
+  return simulatePreparedTransactions(settings, chain, from, transactions, undefined);
 }

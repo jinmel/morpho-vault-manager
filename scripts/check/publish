@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../common.sh
+source "$SCRIPT_DIR/../common.sh"
+
+log "validating publish/install manifest via npm pack --dry-run"
+
+PACK_OUTPUT="$(cd "$ROOT_DIR" && npm pack --dry-run --json 2>/dev/null)"
+
+require_file() {
+  local needle="$1"
+  if ! printf '%s' "$PACK_OUTPUT" | grep -q "\"path\":\\s*\"$needle\""; then
+    die "publish manifest is missing required file: $needle"
+  fi
+}
+
+forbid_file() {
+  local needle="$1"
+  if printf '%s' "$PACK_OUTPUT" | grep -q "\"path\":\\s*\"$needle\""; then
+    die "publish manifest leaks internal file: $needle"
+  fi
+}
+
+require_file "index.ts"
+require_file "openclaw.plugin.json"
+require_file "package.json"
+require_file "src/lib/rebalance.ts"
+require_file "src/lib/secrets.ts"
+require_file "src/lib/preflight.ts"
+require_file "src/cli/configure.ts"
+require_file "src/cli/register.ts"
+require_file "src/bin/rebalance.ts"
+require_file "skills/morpho-cli/SKILL.md"
+
+forbid_file "state/progress.json"
+forbid_file "evals/vault-manager-evals.md"
+forbid_file "docs/openclaw-vault-manager-spec.md"
+forbid_file "docs/exec-plans/active/bootstrap-harness.md"
+forbid_file "src/bin/evals.ts"
+forbid_file "src/bin/doctor.ts"
+forbid_file "src/bin/sandbox.ts"
+forbid_file "src/bin/live-path.ts"
+forbid_file "src/lib/fixtures.ts"
+forbid_file "scripts/dev/sandbox"
+forbid_file "scripts/check/live-path"
+forbid_file "scripts/check/evals"
+forbid_file "scripts/check/publish"
+forbid_file "scripts/dev/doctor"
+forbid_file "scripts/dev/up"
+forbid_file ".env"
+
+log "publish manifest checks passed"

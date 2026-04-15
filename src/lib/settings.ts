@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import { registerInlineToken, tokenSourceFromPluginConfig } from "./secrets.js";
 import type { VaultManagerSettings } from "./types.js";
 
 function stringValue(value: unknown): string | undefined {
@@ -15,6 +16,11 @@ export function resolveVaultManagerSettings(pluginConfig?: Record<string, unknow
   const dataRoot = path.join(homeDir, ".openclaw", "vault-manager");
   const defaultProfilePath = path.join(dataRoot, "profiles", "default.json");
   const config = pluginConfig ?? {};
+
+  const hostResolvedToken = stringValue(config.apiKeyValue);
+  if (hostResolvedToken) {
+    registerInlineToken("plugin-config:apiKey", hostResolvedToken);
+  }
 
   return {
     dataRoot,
@@ -38,6 +44,10 @@ export function resolveVaultManagerSettings(pluginConfig?: Record<string, unknow
       Intl.DateTimeFormat().resolvedOptions().timeZone ??
       "UTC",
     defaultTokenEnvVar: stringValue(config.defaultTokenEnvVar) ?? "OWS_MORPHO_VAULT_MANAGER_TOKEN",
+    defaultTokenSource: tokenSourceFromPluginConfig(
+      config.apiKey,
+      stringValue(config.defaultTokenEnvVar) ?? "OWS_MORPHO_VAULT_MANAGER_TOKEN"
+    ),
     baseAgentId: "vault-manager",
     baseCronName: "Morpho Vault Rebalance",
     dryRunByDefault: booleanValue(config.dryRunByDefault) ?? true

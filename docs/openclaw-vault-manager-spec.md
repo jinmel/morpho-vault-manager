@@ -200,13 +200,14 @@ Why:
 - it matches the OWS “local subprocess” access profile
 - it avoids embedding wallet logic into the plugin
 - it preserves OWS policy semantics
+- it keeps raw API-token handling out of plugin process memory in v1
 - it is straightforward to audit and replace later
 
 The plugin should shell out to `ows` for:
 
 - wallet create/import/export guidance
 - policy creation
-- API key creation/revocation
+- API key creation/revocation instructions and token-source wiring
 - sign, and use `signAndSend` later if/when the CLI exposes a documented surface for it
 
 Phase 2 can add direct library bindings or a local OWS daemon if needed.
@@ -307,7 +308,7 @@ Preferred storage:
 - plugin-supported `apiKey` or plugin config field backed by OpenClaw `SecretRef`
 - or plugin-scoped env via `plugins.entries.<id>.env`
 
-The configure command should offer to create an env-backed secret reference rather than write the token directly.
+The configure command should not read the raw token into plugin process memory. Instead, it should emit the exact OWS API-key provisioning command, then record only an env/file/`SecretRef`-backed source descriptor for the resulting token.
 
 ## Configure Flow Spec
 
@@ -338,9 +339,12 @@ For create:
 
 ### Step 2. Agent-access provisioning
 
+For v1, this step intentionally keeps the raw token out of the wizard process. The operator runs the emitted OWS provisioning command in a separate shell, then points the plugin at the resulting env/file/`SecretRef` source.
+
 Create or update:
 
 - OWS policy files
+- exact OWS API-key provisioning command and token-source wiring
 - OWS API key for the vault-manager agent
 
 The key should be scoped to:
@@ -685,11 +689,11 @@ It should not assume any single model provider.
 - vendored `morpho-cli` skill
 - isolated cron job
 - dry-run + live-run support
+- `status`, `pause`, `resume`, `run-now`
 - strict vault/spender allowlist policy
 
 ### Phase 2: Better operator ergonomics
 
-- `status`, `pause`, `resume`, `run-now`
 - dashboard/status views
 - richer notifications
 - auto-detect new allowlisted vaults but require approval

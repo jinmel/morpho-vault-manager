@@ -55,6 +55,7 @@ Responsibilities:
 
 - wallet lifecycle
 - API-key based agent access
+- API-key provisioning may remain manual/out-of-process in v1 to keep the raw token out of plugin process memory
 - policy enforcement
 - signing
 - future `signAndSend` support when a documented CLI surface exists
@@ -78,11 +79,14 @@ The initial assumption is `morpho-cli` plus vendored Morpho skill content.
 1. User runs `openclaw vault-manager configure`.
 2. Plugin checks for required tools and daemon assumptions.
 3. Plugin creates or imports an OWS wallet.
-4. Plugin provisions an OWS API key with Morpho-specific policy constraints.
+4. Plugin emits OWS API-key provisioning instructions with Morpho-specific policy constraints, and the operator completes token creation out-of-process so the raw token never enters plugin process memory.
 5. Plugin records the risk profile and allowed-vault config.
-6. Plugin creates a dedicated OpenClaw agent workspace.
-7. Plugin writes `AGENTS.md` standing orders into that workspace.
-8. Plugin creates an isolated OpenClaw cron job for periodic execution.
+6. Plugin offers funding guidance and an optional "continue once funded" balance poll against Morpho token reads.
+7. Plugin offers optional model-routing preference for the dedicated agent.
+8. Plugin creates a dedicated OpenClaw agent workspace.
+9. Plugin writes `AGENTS.md` standing orders into that workspace.
+10. Plugin creates an isolated OpenClaw cron job for periodic execution.
+11. Plugin runs a final validation dry-run against live Morpho state and persists the outcome in the profile.
 
 ### Rebalance Run
 
@@ -154,7 +158,8 @@ This is the intended direction for the repo:
 
 ### Rebalance Engine
 
-- scoring
+- weighted scoring: `apy_weight * net_apy + tvl_weight * normalized_tvl - fee_weight * fee_pct - rewards_penalty`
+- per-profile score weights and reward preference
 - target weight computation
 - drift detection
 - execution plan generation

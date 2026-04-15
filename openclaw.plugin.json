@@ -52,6 +52,33 @@
         "type": "string",
         "description": "Environment variable name expected to hold the OWS API token."
       },
+      "apiKey": {
+        "description": "OWS API token source. A bare string is treated as an env-var name. Objects with {source:'env', id} read an env var; {source:'file', path, mode?, jsonField?} read from a file (singleValue or json).",
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "source": { "type": "string", "enum": ["env"] },
+              "provider": { "type": "string" },
+              "id": { "type": "string" }
+            },
+            "required": ["source", "id"]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "source": { "type": "string", "enum": ["file"] },
+              "path": { "type": "string" },
+              "mode": { "type": "string", "enum": ["singleValue", "json"] },
+              "jsonField": { "type": "string" }
+            },
+            "required": ["source", "path"]
+          }
+        ]
+      },
       "dryRunByDefault": {
         "type": "boolean",
         "description": "Whether live execution should remain opt-in."
