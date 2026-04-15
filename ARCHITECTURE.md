@@ -70,7 +70,7 @@ Responsibilities:
 - prepare unsigned transactions
 - simulate transactions before execution
 
-The initial assumption is `morpho-cli` plus vendored Morpho skill content.
+The rebalance runtime uses `morpho-cli` directly. The plugin's configure flow additionally registers the hosted Morpho MCP server (`https://mcp.morpho.org`) with OpenClaw so that free-form agent chats can discover Morpho query and prepare tools by name. MCP registration is gateway-scoped config, not a runtime dependency: rebalance runs continue to work if the MCP entry is absent or unreachable.
 
 ## End-to-End Flow
 
@@ -78,15 +78,16 @@ The initial assumption is `morpho-cli` plus vendored Morpho skill content.
 
 1. User runs `openclaw vault-manager configure`.
 2. Plugin checks for required tools and daemon assumptions.
-3. Plugin creates or imports an OWS wallet.
-4. Plugin emits OWS API-key provisioning instructions with Morpho-specific policy constraints, and the operator completes token creation out-of-process so the raw token never enters plugin process memory.
-5. Plugin records the risk profile.
-6. Plugin offers funding guidance and an optional "continue once funded" balance poll against Morpho token reads.
-7. Plugin offers optional model-routing preference for the dedicated agent.
-8. Plugin creates a dedicated OpenClaw agent workspace.
-9. Plugin writes `AGENTS.md` standing orders into that workspace.
-10. Plugin creates an isolated OpenClaw cron job for periodic execution.
-11. Plugin runs a final validation dry-run against live Morpho state and persists the outcome in the profile.
+3. Plugin offers to register the hosted Morpho MCP server (`https://mcp.morpho.org`) into gateway-wide OpenClaw config via `openclaw mcp set morpho '{"url":"..."}'`. Idempotent: if a `morpho` MCP entry already exists, the plugin leaves it untouched and surfaces the manual reset command.
+4. Plugin creates or imports an OWS wallet.
+5. Plugin emits OWS API-key provisioning instructions with Morpho-specific policy constraints, and the operator completes token creation out-of-process so the raw token never enters plugin process memory.
+6. Plugin records the risk profile.
+7. Plugin offers funding guidance and an optional "continue once funded" balance poll against Morpho token reads.
+8. Plugin offers optional model-routing preference for the dedicated agent.
+9. Plugin creates a dedicated OpenClaw agent workspace.
+10. Plugin writes `AGENTS.md` standing orders into that workspace.
+11. Plugin creates an isolated OpenClaw cron job for periodic execution.
+12. Plugin runs a final validation dry-run against live Morpho state and persists the outcome in the profile.
 
 ### Rebalance Run
 

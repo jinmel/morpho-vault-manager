@@ -2,9 +2,6 @@
   "id": "morpho-vault-manager",
   "name": "Morpho Vault Manager",
   "description": "Onboard and operate a constrained Morpho vault manager agent on OpenClaw.",
-  "skills": [
-    "./skills"
-  ],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

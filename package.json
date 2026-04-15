@@ -23,7 +23,6 @@
     "!dist/src/lib/fixtures.js",
     "dist/src/bin/rebalance.js",
     "openclaw.plugin.json",
-    "skills/**/*",
     "scripts/rebalance/**/*",
     "scripts/common.sh",
     "README.md",

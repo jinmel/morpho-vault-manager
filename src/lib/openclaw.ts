@@ -109,6 +109,47 @@ export async function runCronJobNow(settings: VaultManagerSettings, cronJobId: s
   return result.stdout.trim() || result.stderr.trim();
 }
 
+export type McpServerProbe = {
+  exists: boolean;
+  raw?: string;
+};
+
+export async function mcpShowServer(
+  settings: VaultManagerSettings,
+  name: string
+): Promise<McpServerProbe> {
+  const result = await runCommand(settings.openclawCommand, ["mcp", "show", name]);
+  if (result.code === 0) {
+    return { exists: true, raw: result.stdout.trim() };
+  }
+  return { exists: false };
+}
+
+export type McpSetResult = {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+};
+
+export async function mcpSetHttpServer(params: {
+  settings: VaultManagerSettings;
+  name: string;
+  url: string;
+}): Promise<McpSetResult> {
+  const payload = JSON.stringify({ url: params.url });
+  const result = await runCommand(params.settings.openclawCommand, [
+    "mcp",
+    "set",
+    params.name,
+    payload
+  ]);
+  return {
+    ok: result.code === 0,
+    stdout: result.stdout.trim(),
+    stderr: result.stderr.trim()
+  };
+}
+
 export async function listCronJobs(settings: VaultManagerSettings): Promise<unknown[] | null> {
   const result = await runCommand(settings.openclawCommand, ["cron", "list", "--all", "--json"]);
   if (result.code !== 0) {
