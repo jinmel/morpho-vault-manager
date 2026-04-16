@@ -27,7 +27,9 @@ import { saveProfile } from "../lib/profile.js";
 import {
   parseOwsKeyCreateOutput,
   parseOwsWalletCreateOutput,
-  parseOwsWalletList
+  parseOwsWalletList,
+  readWalletMarker,
+  resolveOrCreateWallet
 } from "../lib/ows-bootstrap.js";
 import {
   runPlan,
@@ -273,6 +275,32 @@ function makeTempSettings(): VaultManagerSettings {
     baseCronName: "Morpho Vault Rebalance",
   };
 }
+
+type FakeCall = { command: string; args: string[] };
+type FakeResponder = (call: FakeCall) => { stdout: string; stderr: string; code: number };
+
+function fakeOwsDeps(respond: FakeResponder, calls: FakeCall[]) {
+  return {
+    runCommand: async (command: string, args: string[]) => {
+      calls.push({ command, args });
+      return respond({ command, args });
+    },
+    commandExists: async () => true,
+    runShell: async () => ({ stdout: "", stderr: "", code: 0 }),
+    generatePassphrase: () => "testpass".padEnd(64, "0"),
+    now: () => new Date("2026-04-17T00:00:00.000Z")
+  };
+}
+
+const FIXTURE_WALLET_CREATE_STDOUT = [
+  "Created wallet 3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff",
+  "  eip155:1     0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B    m/44'/60'/0'/0/0",
+  "  eip155:8453  0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B    m/44'/60'/0'/0/0",
+  "",
+  "Recovery phrase (write this down):",
+  "abandon ability able about above absent absorb abstract absurd abuse access accident",
+  ""
+].join("\n");
 
 function toUsdc(value: string): bigint {
   return parseUnits(value, USDC_DECIMALS);
@@ -801,6 +829,46 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
     async run() {
       const parsed = parseOwsKeyCreateOutput("no token here");
       assertTrue("returned error", "error" in parsed);
+    }
+  },
+  {
+    id: "CFG-006",
+    description: "Zero-touch auto-create: empty OWS + no marker → wallet + marker written",
+    async run() {
+      const settings = makeTempSettings();
+      const calls: FakeCall[] = [];
+      const deps = fakeOwsDeps(({ args }) => {
+        if (args[0] === "wallet" && args[1] === "list") {
+          return { stdout: "", stderr: "", code: 0 };
+        }
+        if (args[0] === "wallet" && args[1] === "create") {
+          return { stdout: FIXTURE_WALLET_CREATE_STDOUT, stderr: "", code: 0 };
+        }
+        return { stdout: "", stderr: "unexpected", code: 1 };
+      }, calls);
+
+      const resolution = await resolveOrCreateWallet(
+        settings,
+        { profileId: "default" },
+        deps
+      );
+
+      assertEqual("source", resolution.source, "auto-created");
+      assertEqual(
+        "wallet address",
+        resolution.walletAddress,
+        "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+      );
+      assertEqual("canonical name", resolution.canonicalName, "morpho-vault-manager");
+
+      const marker = await readWalletMarker(settings, "default");
+      if (!marker) throw new Error("marker file was not written");
+      assertEqual("marker source", marker.source, "auto-created");
+      if (!marker.mnemonic) throw new Error("marker did not capture the mnemonic");
+
+      assertEqual("call count", calls.length, 2);
+      assertEqual("first call", calls[0].args.slice(0, 2).join(" "), "wallet list");
+      assertEqual("second call", calls[1].args.slice(0, 2).join(" "), "wallet create");
     }
   },
 ];
