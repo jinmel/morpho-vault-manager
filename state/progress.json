@@ -3,7 +3,7 @@
   "project": "openclaw-vault-manager",
   "lastUpdated": "2026-04-15",
   "overallStatus": "ready_for_review",
-  "currentFocus": "runtime_contract_enforced_in_code_not_in_workspace_markdown",
+  "currentFocus": "morpho_mcp_registration_wired_into_configure_flow",
   "currentPlan": {
     "id": "bootstrap-harness",
     "path": "docs/exec-plans/active/bootstrap-harness.md",
@@ -78,11 +78,6 @@
       "id": "docs_spec_alignment",
       "status": "completed",
       "notes": "docs/openclaw-vault-manager-spec.md, ARCHITECTURE.md, and SECURITY.md now document the intentional out-of-process OWS API-key provisioning path and place status/pause/resume/run-now in Phase 1 to match shipped behavior."
-    },
-    {
-      "id": "drop_agents_md_runtime_artifact",
-      "status": "completed",
-      "notes": "Configure flow no longer writes an AGENTS.md standing-orders file into the per-profile workspace. AGENTS.md is a coding-agent convention; reusing it for a runtime execution contract was a category error. The cron wake-up message is now self-contained and directly names `openclaw vault-manager dry-run` and `live-run --allow-live` commands. The operating contract (Base-only, USDC-only, simulate-before-sign, prepare-only calldata, OWS-gated signing) is enforced mechanically by the rebalance runtime, not by prompt content. src/lib/template.ts was deleted along with the last consumer. Spec, ARCHITECTURE, SECURITY, README, release-qa-checklist updated in the same change."
     },
     {
       "id": "morpho_mcp_registration",
@@ -160,7 +155,7 @@
       "id": "configure_model_selection",
       "path": "src/cli/configure.ts",
       "status": "pass",
-      "notes": "Model preference flows end-to-end: captured in configure, stored on the profile, and passed to openclaw agents add --model plus openclaw cron add --model. Historically this note also mentioned a generated AGENTS.md inside the workspace, but that file is no longer written — the operating contract is enforced by the runtime, not by prompt content."
+      "notes": "Model preference flows end-to-end: captured in configure, stored on the profile, written into AGENTS.md, and passed to openclaw agents add --model plus openclaw cron add --model."
     },
     {
       "id": "configure_validation_run",

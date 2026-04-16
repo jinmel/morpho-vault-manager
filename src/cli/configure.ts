@@ -7,7 +7,7 @@ import {
   MORPHO_MCP_URL,
   RISK_PRESETS
 } from "../lib/constants.js";
-import { ensureDir } from "../lib/fs.js";
+import { ensureDir, writeTextFile } from "../lib/fs.js";
 import { getMorphoTokenBalance } from "../lib/morpho.js";
 import { describeTokenSource, resolveApiToken, type TokenSource } from "../lib/secrets.js";
 import {
@@ -25,6 +25,7 @@ import { runPreflightChecks } from "../lib/preflight.js";
 import { runRebalance, type RebalanceRunResult } from "../lib/rebalance.js";
 import { buildApiKeyCreateCommand, buildWalletCreateCommand, runOwsPolicyCreate } from "../lib/ows.js";
 import { loadProfile, saveProfile } from "../lib/profile.js";
+import { renderAgentInstructions } from "../lib/template.js";
 import type {
   CliLogger,
   ConfigureResult,
@@ -861,6 +862,8 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     lastFundedUsdc: fundingProbe?.balance ?? existing.profile?.lastFundedUsdc,
     lastValidationRun: existing.profile?.lastValidationRun
   };
+
+  await writeTextFile(path.join(workspaceDir, "AGENTS.md"), renderAgentInstructions(profile));
 
   const agentResult = await ensureAgent({
     settings,
