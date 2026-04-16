@@ -215,3 +215,112 @@ export async function ensureOwsInstalled(
     ].join("\n")
   };
 }
+
+export type WalletResolution = {
+  walletRef: string;
+  walletAddress: `0x${string}`;
+  passphrase: string;
+  source: "marker" | "override" | "auto-created";
+  canonicalName: string;
+};
+
+export type ResolveWalletParams = {
+  profileId: string;
+  override?: { walletRef: string; passphrase: string };
+};
+
+export async function resolveOrCreateWallet(
+  settings: VaultManagerSettings,
+  params: ResolveWalletParams,
+  input?: OwsBootstrapDeps
+): Promise<WalletResolution> {
+  const d = deps(input);
+
+  const existingMarker = await readWalletMarker(settings, params.profileId);
+  if (existingMarker) {
+    return {
+      walletRef: existingMarker.walletRef,
+      walletAddress: existingMarker.walletAddress,
+      passphrase: existingMarker.passphrase,
+      source: "marker",
+      canonicalName: existingMarker.canonicalName
+    };
+  }
+
+  if (params.override) {
+    const list = await d.runCommand(settings.owsCommand, ["wallet", "list"]);
+    if (list.code !== 0) {
+      throw new Error(`ows wallet list failed: ${list.stderr || list.stdout}`);
+    }
+    const wallets = parseOwsWalletList(list.stdout);
+    const match = wallets.find(
+      (w) =>
+        w.name === params.override!.walletRef ||
+        w.walletRef === params.override!.walletRef
+    );
+    if (!match) {
+      throw new Error(
+        `wallet '${params.override.walletRef}' not found in OWS. Run \`ows wallet list\` to see available wallets.`
+      );
+    }
+    if (!match.evmAddress) {
+      throw new Error(
+        `wallet '${params.override.walletRef}' has no EVM address in \`ows wallet list\` output`
+      );
+    }
+    return {
+      walletRef: match.walletRef,
+      walletAddress: match.evmAddress,
+      passphrase: params.override.passphrase,
+      source: "override",
+      canonicalName: match.name
+    };
+  }
+
+  const canonical = canonicalWalletName(params.profileId);
+  const list = await d.runCommand(settings.owsCommand, ["wallet", "list"]);
+  if (list.code !== 0) {
+    throw new Error(`ows wallet list failed: ${list.stderr || list.stdout}`);
+  }
+  const existing = parseOwsWalletList(list.stdout);
+  const collides = existing.some((w) => w.name === canonical);
+  const nameToCreate = collides
+    ? `${canonical}-${Math.floor(d.now().getTime() / 1000)}`
+    : canonical;
+
+  const passphrase = d.generatePassphrase();
+  const create = await d.runCommand(
+    settings.owsCommand,
+    ["wallet", "create", "--name", nameToCreate, "--show-mnemonic"],
+    { env: { ...process.env, OWS_PASSPHRASE: passphrase } }
+  );
+  if (create.code !== 0) {
+    throw new Error(`ows wallet create failed: ${create.stderr || create.stdout}`);
+  }
+
+  const parsed = parseOwsWalletCreateOutput(create.stdout);
+  if ("error" in parsed) {
+    throw new Error(
+      `ows wallet create succeeded but output could not be parsed: ${parsed.error}`
+    );
+  }
+
+  const marker: WalletMarker = {
+    walletRef: parsed.walletRef,
+    walletAddress: parsed.walletAddress,
+    passphrase,
+    mnemonic: parsed.mnemonic,
+    source: "auto-created",
+    canonicalName: nameToCreate,
+    createdAt: d.now().toISOString()
+  };
+  await writeWalletMarker(settings, params.profileId, marker);
+
+  return {
+    walletRef: marker.walletRef,
+    walletAddress: marker.walletAddress,
+    passphrase: marker.passphrase,
+    source: "auto-created",
+    canonicalName: marker.canonicalName
+  };
+}
