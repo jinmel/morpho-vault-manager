@@ -5,6 +5,7 @@ import { deleteAgent, deleteCronJob } from "../lib/openclaw.js";
 import { deleteProfileFile, listProfileIds, loadProfile } from "../lib/profile.js";
 import type { VaultManagerSettings } from "../lib/types.js";
 import { agentIdForProfile, workspaceDirForAgent } from "./configure.js";
+import { deleteWalletMarker, walletMarkerPath } from "../lib/ows-bootstrap.js";
 
 type TeardownResult = {
   profileId: string;
@@ -14,6 +15,7 @@ type TeardownResult = {
   logsRemoved: boolean;
   runsRemoved: boolean;
   profileRemoved: boolean;
+  markerRemoved: boolean;
   errors: string[];
 };
 
@@ -35,6 +37,7 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
     logsRemoved: false,
     runsRemoved: false,
     profileRemoved: false,
+    markerRemoved: false,
     errors: []
   };
 
@@ -54,6 +57,8 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
     items.push(`Runs: ${runsDir} (${await pathExists(runsDir) ? "exists" : "not found"})`);
   }
   items.push(`Profile: ${profileId}.json`);
+  const markerPath = walletMarkerPath(settings, profileId);
+  items.push(`Marker: ${markerPath} (${await pathExists(markerPath) ? "exists" : "not found"})`);
 
   if (!force) {
     await p.note(items.join("\n"), `Teardown: ${profileId}`);
@@ -100,6 +105,12 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
 
   result.profileRemoved = await deleteProfileFile(settings, profileId);
 
+  try {
+    result.markerRemoved = await deleteWalletMarker(settings, profileId);
+  } catch (error) {
+    result.errors.push(`Marker removal failed: ${(error as Error).message}`);
+  }
+
   if (!force) {
     const summary = [
       `Cron job: ${cronJobId ? (result.cronDeleted ? "removed" : "FAILED") : "none"}`,
@@ -109,7 +120,8 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
         `Logs: ${result.logsRemoved ? "removed" : "FAILED"}`,
         `Runs: ${result.runsRemoved ? "removed" : "FAILED"}`
       ]),
-      `Profile: ${result.profileRemoved ? "removed" : "FAILED"}`
+      `Profile: ${result.profileRemoved ? "removed" : "FAILED"}`,
+      `Marker: ${result.markerRemoved ? "removed" : "FAILED"}`
     ];
 
     await p.note(summary.join("\n"), "Teardown complete");
