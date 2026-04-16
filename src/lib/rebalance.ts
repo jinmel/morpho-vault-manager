@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { formatUnits, getAddress, parseUnits } from "viem";
-import { MIN_ACTION_USDC, USDC_DECIMALS } from "./constants.js";
+import { USDC_DECIMALS } from "./constants.js";
 import { ensureDir, writeJsonFile } from "./fs.js";
 import {
   getMorphoPositions,
@@ -214,7 +214,7 @@ function topVaultSetChangedMaterially(params: {
   const changedPositions = params.positions.filter((position) => {
     const address = getAddress(position.vault.address);
     const supplied = toUsdcUnits(position.supplied.value);
-    return supplied >= MIN_ACTION_USDC && !selectedAddresses.has(address);
+    return supplied > 0n && !selectedAddresses.has(address);
   });
 
   if (changedPositions.length === 0) {
@@ -351,7 +351,7 @@ function plannedTurnover(actions: ActionDraft[]): bigint {
 }
 
 function trimActions(actions: ActionDraft[]): ActionDraft[] {
-  return actions.filter((action) => action.amount >= MIN_ACTION_USDC);
+  return actions.filter((action) => action.amount > 0n);
 }
 
 function capDepositsToAvailableCash(actions: ActionDraft[], currentIdle: bigint): ActionDraft[] {
@@ -399,7 +399,7 @@ function buildActionDrafts(params: {
     const vault = selectedByAddress.get(address);
     const vaultName = vault?.name ?? params.vaultNames.get(address) ?? address;
 
-    if (diff > MIN_ACTION_USDC) {
+    if (diff > 0n) {
       actions.push({
         kind: "deposit",
         vaultAddress: address,
@@ -409,7 +409,7 @@ function buildActionDrafts(params: {
         amount: diff,
         clippedByTurnover: false
       });
-    } else if (diff < -MIN_ACTION_USDC) {
+    } else if (diff < 0n) {
       actions.push({
         kind: "withdraw",
         vaultAddress: address,

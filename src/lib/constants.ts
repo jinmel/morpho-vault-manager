@@ -3,7 +3,6 @@ import type { RiskPreset } from "./types.js";
 export const BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 export const BASE_CHAIN_ID = "eip155:8453";
 export const USDC_DECIMALS = 6;
-export const MIN_ACTION_USDC = 1n * 10n ** 6n;
 
 export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
   conservative: {

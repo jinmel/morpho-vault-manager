@@ -289,7 +289,7 @@ const SCENARIOS: Scenario[] = [
   },
   {
     id: "REB-002",
-    description: "No-op when all actions are below minimum size",
+    description: "No-op when positions already match targets",
     profile: {
       riskProfile: "balanced"
     },
