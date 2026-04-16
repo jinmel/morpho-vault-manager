@@ -1,5 +1,5 @@
 {
-  "name": "@morpho/openclaw-vault-manager",
+  "name": "morpho-vault-manager",
   "version": "0.1.0",
   "description": "Native OpenClaw plugin for onboarding and running a Morpho vault manager agent.",
   "type": "module",

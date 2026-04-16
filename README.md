@@ -20,7 +20,7 @@ Native OpenClaw plugin for onboarding and running a constrained Morpho vault man
 ## Install
 
 ```bash
-openclaw plugins install @morpho/openclaw-vault-manager
+openclaw plugins install morpho-vault-manager
 openclaw plugins enable morpho-vault-manager
 openclaw gateway restart
 ```
