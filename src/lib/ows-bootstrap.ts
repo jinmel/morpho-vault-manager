@@ -170,3 +170,48 @@ export function parseOwsKeyCreateOutput(
   }
   return { token: match[0] };
 }
+
+export type EnsureOwsResult = {
+  status: "preexisting" | "just-installed" | "declined" | "failed" | "path-stale";
+  stderr?: string;
+  hint?: string;
+};
+
+export async function ensureOwsInstalled(
+  settings: VaultManagerSettings,
+  opts: { confirmInstall: () => Promise<boolean> },
+  input?: OwsBootstrapDeps
+): Promise<EnsureOwsResult> {
+  const d = deps(input);
+
+  if (await d.commandExists(settings.owsCommand)) {
+    return { status: "preexisting" };
+  }
+
+  const confirmed = await opts.confirmInstall();
+  if (!confirmed) {
+    return { status: "declined" };
+  }
+
+  const install = await d.runShell(
+    ["-lc", "curl -fsSL https://docs.openwallet.sh/install.sh | bash"],
+    { env: process.env }
+  );
+  if (install.code !== 0) {
+    return { status: "failed", stderr: install.stderr || install.stdout };
+  }
+
+  if (await d.commandExists(settings.owsCommand)) {
+    return { status: "just-installed" };
+  }
+
+  return {
+    status: "path-stale",
+    hint: [
+      "OWS installed but not yet on PATH.",
+      "Likely path: ~/.ows/bin",
+      "Run: exec $SHELL -l",
+      "Then rerun: openclaw vault-manager configure"
+    ].join("\n")
+  };
+}
