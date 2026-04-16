@@ -22,7 +22,7 @@ import {
   upsertCronJob
 } from "../lib/openclaw.js";
 import { runPreflightChecks } from "../lib/preflight.js";
-import { commandExists } from "../lib/shell.js";
+import { ensureOwsInstalled } from "../lib/ows-bootstrap.js";
 import { runPlan, type PlanResult } from "../lib/rebalance.js";
 import { buildApiKeyCreateCommand, buildWalletCreateCommand } from "../lib/ows.js";
 import { loadProfile, saveProfile } from "../lib/profile.js";
@@ -367,45 +367,27 @@ async function preflight(settings: VaultManagerSettings): Promise<void> {
   }
 
   if (owsIssue) {
-    await p.note(
-      [
-        owsIssue.message,
-        "",
-        "OWS (Open Wallet SDK) is required for wallet creation, transaction signing, and policy management.",
-        "",
-        "Install with:",
-        "  curl -fsSL https://docs.openwallet.sh/install.sh | bash",
-        "",
-        "After installing, verify with:",
-        `  ${settings.owsCommand} --version`,
-        "",
-        "Full docs: https://docs.openwallet.sh/"
-      ].join("\n"),
-      "OWS Not Found"
-    );
+    const install = await ensureOwsInstalled(settings, {
+      confirmInstall: async () =>
+        requiredBoolean(
+          await p.confirm({
+            message: "OWS is not installed. Install it now via the official installer?",
+            initialValue: true
+          }),
+          "OWS install confirmation"
+        )
+    });
 
-    while (true) {
-      const retry = requiredBoolean(
-        await p.confirm({
-          message: "Have you installed OWS? Retry the check?",
-          initialValue: false
-        }),
-        "OWS install confirmation"
-      );
-
-      if (!retry) {
-        fail("Install OWS before running configure. See https://docs.openwallet.sh/");
-      }
-
-      if (await commandExists(settings.owsCommand)) {
-        break;
-      }
-
-      await p.note(
-        `${settings.owsCommand} is still not found in PATH.`,
-        "OWS Still Missing"
-      );
+    if (install.status === "declined") {
+      fail("Install OWS before running configure. See https://docs.openwallet.sh/");
     }
+    if (install.status === "failed") {
+      fail(`OWS install failed: ${install.stderr ?? "unknown error"}`);
+    }
+    if (install.status === "path-stale") {
+      fail(install.hint ?? "OWS installed but not on PATH; restart your shell and rerun.");
+    }
+    // install.status is "preexisting" (race) or "just-installed"; fall through.
   }
 
   if (gatewayIssue) {
