@@ -28,14 +28,11 @@ Use this checklist on the candidate package that will be published. The goal is 
 
 - [ ] `openclaw vault-manager configure` starts without stack traces.
 - [ ] Preflight fails loudly and clearly if `openclaw`, `ows`, or `bunx @morpho-org/cli` is unavailable.
-- [ ] Wallet create flow prints an operator-run OWS command and does not expose secrets inline.
-- [ ] Existing-wallet flow accepts a known wallet reference and valid Base address.
-- [ ] The wizard requires a valid EVM address and rejects malformed addresses.
-- [ ] Policy artifacts are written successfully for the selected profile.
-- [ ] The API key step clearly instructs the operator to run `ows api-key create` in a separate shell.
-- [ ] Token source capture works for env-backed secrets.
-- [ ] Token source capture works for file-backed secrets in `singleValue` mode.
-- [ ] Token source validation fails clearly when the configured env var or file is missing.
+- [ ] Wallet auto-create flow runs `ows wallet create --show-mnemonic` internally, captures the mnemonic + address without ever echoing them to the terminal, and writes a marker file at `~/.openclaw/vault-manager/state/<profileId>.wallet.json` with mode 0600.
+- [ ] Operator override flow (`--wallet <ref>`) reuses the specified wallet, prompts for a masked passphrase, and persists the marker only after API key provisioning succeeds.
+- [ ] Wrong passphrase on the override path is rejected with a clear message and allows exactly one retry.
+- [ ] API key provisioning runs `ows key create` internally, captures the `ows_key_...` token, and writes it to `openclaw.json env.vars.<VAR>` automatically (no operator paste).
+- [ ] A repeated `configure` run on the same profile short-circuits to the marker file and never re-prompts for wallet details or token source.
 - [ ] Funding guidance shows the Base wallet address and explicitly says `USDC on Base`.
 - [ ] Model selection persists into the generated agent configuration.
 - [ ] The generated workspace contains `AGENTS.md` with Base-only, USDC-only, and OWS-only signing rules.
