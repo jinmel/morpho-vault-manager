@@ -1,5 +1,5 @@
-import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
 import { registerInlineToken, tokenSourceFromPluginConfig } from "./secrets.js";
 import type { VaultManagerSettings } from "./types.js";
 
@@ -12,8 +12,8 @@ function booleanValue(value: unknown): boolean | undefined {
 }
 
 export function resolveVaultManagerSettings(pluginConfig?: Record<string, unknown>): VaultManagerSettings {
-  const homeDir = os.homedir();
-  const dataRoot = path.join(homeDir, ".openclaw", "vault-manager");
+  const stateDir = resolveStateDir();
+  const dataRoot = path.join(stateDir, "vault-manager");
   const defaultProfilePath = path.join(dataRoot, "profiles", "default.json");
   const config = pluginConfig ?? {};
 
@@ -24,7 +24,7 @@ export function resolveVaultManagerSettings(pluginConfig?: Record<string, unknow
 
   return {
     dataRoot,
-    workspaceRoot: stringValue(config.workspaceRoot) ?? path.join(homeDir, ".openclaw"),
+    workspaceRoot: stringValue(config.workspaceRoot) ?? stateDir,
     defaultProfilePath: stringValue(config.profilePath) ?? defaultProfilePath,
     owsCommand: stringValue(config.owsCommand) ?? "ows",
     openclawCommand: stringValue(config.openclawCommand) ?? "openclaw",
