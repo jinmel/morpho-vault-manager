@@ -1,6 +1,5 @@
 import path from "node:path";
 import * as p from "@clack/prompts";
-import { getAddress, isAddress } from "viem";
 import {
   BASE_USDC_ADDRESS,
   RISK_PRESETS
@@ -22,9 +21,12 @@ import {
   upsertCronJob
 } from "../lib/openclaw.js";
 import { runPreflightChecks } from "../lib/preflight.js";
-import { ensureOwsInstalled } from "../lib/ows-bootstrap.js";
+import {
+  ensureOwsInstalled,
+  resolveOrCreateWallet
+} from "../lib/ows-bootstrap.js";
 import { runPlan, type PlanResult } from "../lib/rebalance.js";
-import { buildApiKeyCreateCommand, buildWalletCreateCommand } from "../lib/ows.js";
+import { buildApiKeyCreateCommand } from "../lib/ows.js";
 import { loadProfile, saveProfile } from "../lib/profile.js";
 import { renderAgentInstructions } from "../lib/template.js";
 import type {
@@ -421,115 +423,6 @@ async function preflight(settings: VaultManagerSettings): Promise<void> {
   }
 }
 
-async function promptWallet(settings: VaultManagerSettings, existing?: VaultManagerProfile): Promise<{
-  walletMode: "created" | "existing";
-  walletRef: string;
-  walletAddress: string;
-}> {
-  const walletMode = await p.select({
-    message: "Wallet setup",
-    initialValue: existing?.walletMode ?? "created",
-    options: [
-      {
-        value: "created",
-        label: "Create a fresh OWS wallet",
-        hint: "Guided, but the sensitive OWS command still runs under your control."
-      },
-      {
-        value: "existing",
-        label: "Use an existing OWS wallet",
-        hint: "Use a wallet that already exists inside OWS."
-      }
-    ]
-  });
-
-  const resolvedMode = requiredString(walletMode, "wallet mode") as "created" | "existing";
-
-  if (resolvedMode === "created") {
-    const walletName = requiredString(
-      await p.text({
-        message: "Wallet name",
-        placeholder: existing?.walletRef ?? `morpho-vault-manager`,
-        defaultValue: existing?.walletRef ?? "morpho-vault-manager"
-      }),
-      "wallet name"
-    );
-
-    await p.note(
-      [
-        "Manual step 1/2: create the OWS wallet in your own shell so the plugin never handles owner credentials.",
-        "",
-        buildWalletCreateCommand(settings, walletName),
-        "",
-        "Return here after the wallet exists and paste the public address below."
-      ].join("\n"),
-      "Wallet Setup"
-    );
-
-    const created = requiredBoolean(await p.confirm({
-      message: "Did you create the wallet successfully?",
-      initialValue: true
-    }), "wallet creation confirmation");
-
-    if (!created) {
-      fail("Wallet creation was not completed.");
-    }
-
-    const walletRef = walletName;
-    const walletAddress = requiredString(
-      await p.text({
-        message: "Wallet public address",
-        placeholder: existing?.walletAddress ?? "0x...",
-        defaultValue: existing?.walletAddress ?? "",
-        validate(value) {
-          return isAddress(value) ? undefined : "Enter a valid EVM address.";
-        }
-      }),
-      "wallet public address"
-    );
-
-    return {
-      walletMode: resolvedMode,
-      walletRef,
-      walletAddress: getAddress(walletAddress)
-    };
-  }
-
-  await p.note(
-    [
-      "Manual step 1/2: point the wizard at an existing OWS wallet reference and confirm the public address.",
-      "No wallet import happens inside the plugin, and no recovery material is collected here."
-    ].join("\n"),
-    "Wallet Setup"
-  );
-
-  const walletRef = requiredString(
-    await p.text({
-      message: "Existing OWS wallet reference",
-      placeholder: existing?.walletRef ?? "wallet-name-or-id",
-      defaultValue: existing?.walletRef ?? ""
-    }),
-    "wallet reference"
-  );
-
-  const walletAddress = requiredString(
-    await p.text({
-      message: "Existing wallet public address",
-      placeholder: existing?.walletAddress ?? "0x...",
-      defaultValue: existing?.walletAddress ?? "",
-      validate(value) {
-        return isAddress(value) ? undefined : "Enter a valid EVM address.";
-      }
-    }),
-    "wallet public address"
-  );
-
-  return {
-    walletMode: resolvedMode,
-    walletRef,
-    walletAddress: getAddress(walletAddress)
-  };
-}
 
 async function promptTokenSource(
   defaultSource: TokenSource,
@@ -787,6 +680,37 @@ async function promptCronSchedule(
 }
 
 
+async function resolveOverrideParams(
+  context: ConfigureContext
+): Promise<{ walletRef: string; passphrase: string } | undefined> {
+  const walletRef =
+    context.walletOverrideRef ??
+    (process.env.OWS_VAULT_MANAGER_WALLET || undefined);
+  if (!walletRef) return undefined;
+
+  let passphrase: string | undefined;
+  if (context.walletPassphraseEnvVar) {
+    passphrase = process.env[context.walletPassphraseEnvVar];
+    if (!passphrase) {
+      fail(
+        `--wallet-passphrase-env points at ${context.walletPassphraseEnvVar} but that env var is not set.`
+      );
+    }
+  } else if (process.env.OWS_VAULT_MANAGER_WALLET_PASSPHRASE) {
+    passphrase = process.env.OWS_VAULT_MANAGER_WALLET_PASSPHRASE;
+  } else {
+    const entered = await p.password({
+      message: `Passphrase for wallet ${walletRef}`
+    });
+    if (p.isCancel(entered) || !entered) {
+      fail("Wallet passphrase is required when --wallet is supplied.");
+    }
+    passphrase = entered as string;
+  }
+
+  return { walletRef, passphrase: passphrase! };
+}
+
 export async function runConfigureFlow(context: ConfigureContext): Promise<ConfigureResult> {
   const { settings, profileId } = context;
   const existing = await loadProfile(settings, profileId);
@@ -795,16 +719,20 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
 
   await preflight(settings);
 
-  const wallet = await promptWallet(settings, existing.profile ?? undefined);
-
-  const backedUp = requiredBoolean(await p.confirm({
-    message: "Have you backed up the wallet recovery material and confirmed you understand the owner credential must stay out of the agent?",
-    initialValue: false
-  }), "backup confirmation");
-
-  if (!backedUp) {
-    fail("Backup confirmation is required.");
-  }
+  const override = await resolveOverrideParams(context);
+  const resolution = await resolveOrCreateWallet(settings, {
+    profileId,
+    override
+  });
+  const wallet = {
+    walletMode: resolution.source === "override" ? "existing" : "created",
+    walletRef: resolution.walletRef,
+    walletAddress: resolution.walletAddress
+  } as const;
+  await p.note(
+    `Wallet ready: ${resolution.canonicalName} (${resolution.walletAddress}) [${resolution.source}]`,
+    "Wallet"
+  );
 
   const riskProfile = requiredString(
     await p.select({
