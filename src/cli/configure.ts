@@ -164,8 +164,19 @@ function describeDeliveryTarget(target: {
 async function promptTelegramDeliveryTarget(
   settings: VaultManagerSettings,
   existing?: { deliveryTo?: string; deliveryAccountId?: string }
-): Promise<{ deliveryChannel: string; deliveryTo: string; deliveryAccountId?: string }> {
+): Promise<{ deliveryChannel: string; deliveryTo?: string; deliveryAccountId?: string }> {
   const accounts = await listConfiguredTelegramAccounts(settings);
+  if (accounts.length === 0) {
+    await p.note(
+      [
+        "No configured Telegram accounts were found in OpenClaw.",
+        "Falling back to the OpenClaw last route instead of asking for a raw chat id."
+      ].join("\n"),
+      "Telegram Delivery"
+    );
+    return { deliveryChannel: "last" };
+  }
+
   const defaultAccountId = existing?.deliveryAccountId ?? settings.defaultDeliveryAccountId;
   let accountId =
     accounts.length === 1 ? accounts[0] : accounts.includes(defaultAccountId ?? "") ? defaultAccountId : undefined;
@@ -186,61 +197,32 @@ async function promptTelegramDeliveryTarget(
   }
 
   const discoveredTargets = await listTelegramGroups(settings, accountId);
-  const manualEntryValue = "__manual__";
-  let deliveryTo: string;
-
-  if (discoveredTargets.length > 0) {
-    const selection = requiredString(
-      await p.select({
-        message: "Telegram delivery target",
-        initialValue:
-          discoveredTargets.some((target) => target.id === existing?.deliveryTo)
-            ? existing?.deliveryTo
-            : undefined,
-        options: [
-          ...discoveredTargets.map((target) => ({
-            value: target.id,
-            label: target.label,
-            hint: target.id
-          })),
-          {
-            value: manualEntryValue,
-            label: "Manual target",
-            hint: "Enter a chat id or -100...:topic:<id> yourself."
-          }
-        ]
-      }),
-      "telegram delivery target"
-    );
-
-    deliveryTo =
-      selection === manualEntryValue
-        ? requiredString(
-            await p.text({
-              message: "Telegram chat id or topic target",
-              placeholder: "-1001234567890:topic:42",
-              defaultValue: existing?.deliveryTo
-            }),
-            "telegram delivery target"
-          )
-        : selection;
-  } else {
+  if (discoveredTargets.length === 0) {
     await p.note(
       [
         "No Telegram groups/topics were discovered from the OpenClaw directory.",
-        "You can still enter a Telegram chat id or topic target manually."
+        "Falling back to the OpenClaw last route instead of asking for a raw chat id."
       ].join("\n"),
       "Telegram Delivery"
     );
-    deliveryTo = requiredString(
-      await p.text({
-        message: "Telegram chat id or topic target",
-        placeholder: "-1001234567890:topic:42",
-        defaultValue: existing?.deliveryTo
-      }),
-      "telegram delivery target"
-    );
+    return { deliveryChannel: "last" };
   }
+
+  const deliveryTo = requiredString(
+    await p.select({
+      message: "Telegram delivery target",
+      initialValue:
+        discoveredTargets.some((target) => target.id === existing?.deliveryTo)
+          ? existing?.deliveryTo
+          : undefined,
+      options: discoveredTargets.map((target) => ({
+        value: target.id,
+        label: target.label,
+        hint: target.id
+      }))
+    }),
+    "telegram delivery target"
+  );
 
   return {
     deliveryChannel: "telegram",
