@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "project": "openclaw-vault-manager",
-  "lastUpdated": "2026-04-16",
+  "lastUpdated": "2026-04-17",
   "overallStatus": "ready_for_review",
   "currentFocus": "v1_feature_complete",
   "currentPlan": {
@@ -123,6 +123,12 @@
       "id": "minimum_position_size",
       "status": "completed",
       "notes": "Added minimumPositionUsd to RiskPreset (conservative: $100, balanced: $50, aggressive: $25). allocateTargets in rebalance.ts now zeroes out positions below the minimum and redistributes their amounts to remaining vaults. Template documents the minimum position size."
+    },
+    {
+      "id": "configure_wizard_automation",
+      "status": "completed",
+      "path": "docs/openclaw-vault-manager-spec-configure-wizard-automation.md",
+      "notes": "configure wizard replaces manual OWS wallet + API-key steps with a src/lib/ows-bootstrap.ts adapter. Marker file at ~/.openclaw/vault-manager/state/<profileId>.wallet.json (0600) stores walletRef + passphrase (+ mnemonic for auto-created). --wallet flag preserves bring-your-own-wallet UX with masked passphrase prompt. CFG-006..010 evals cover auto-create, marker reuse, operator override, bad-passphrase, and name collision. SECURITY.md documents the credential-handling tradeoff."
     }
   ],
   "checks": [
@@ -160,7 +166,7 @@
       "id": "eval_runner",
       "path": "scripts/check/evals",
       "status": "pass",
-      "notes": "Fixture-driven configure and rebalance scenarios now cover CFG-001 through CFG-005, REB-001 through REB-004, REB-008 through REB-012, SEC-001, and OBS-001 with injected deps and pass locally."
+      "notes": "Fixture-driven configure and rebalance scenarios now cover CFG-001 through CFG-010, REB-001 through REB-004, REB-008 through REB-012, SEC-001, OBS-001, and OBS-BOOT-PARSER-001..007 (ows-bootstrap parser unit tests) with injected deps and pass locally. CFG-006..010 exercise the new ows-bootstrap wallet resolution and API-key provisioning flows."
     },
     {
       "id": "plugin_typecheck",
