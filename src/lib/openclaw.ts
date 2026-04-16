@@ -56,9 +56,9 @@ export async function upsertCronJob(params: {
     ...(params.profile.modelPreference ? ["--model", params.profile.modelPreference] : []),
     "--message",
     [
-      `Execute the Morpho vault rebalance program in VAULT-MANAGER.md for profile ${params.profile.profileId}.`,
+      `Execute the Morpho vault rebalance program in AGENTS.md for profile ${params.profile.profileId}.`,
       `Start with: openclaw vault-manager dry-run --profile ${params.profile.profileId} --json`,
-      `If the dry-run status is planned and VAULT-MANAGER.md allows live execution, continue with: openclaw vault-manager live-run --profile ${params.profile.profileId} --allow-live --json`,
+      `If the dry-run status is planned and AGENTS.md allows live execution, continue with: openclaw vault-manager live-run --profile ${params.profile.profileId} --allow-live --json`,
       "Report actions taken, receipts, or explicit no-op/block reasons."
     ].join(" "),
     "--light-context",

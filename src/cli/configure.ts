@@ -874,13 +874,15 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     fail(`Failed to create or resolve OpenClaw agent ${agentId}.\n${agentResult.stderr || agentResult.stdout}`);
   }
 
-  await writeTextFile(path.join(workspaceDir, "VAULT-MANAGER.md"), renderAgentInstructions(profile));
-
-  const agentsMd = await readTextFile(path.join(workspaceDir, "AGENTS.md"));
-  if (agentsMd !== null && !agentsMd.includes("VAULT-MANAGER.md")) {
+  const agentsMdPath = path.join(workspaceDir, "AGENTS.md");
+  const agentsMd = await readTextFile(agentsMdPath);
+  const vaultManagerInstructions = renderAgentInstructions(profile);
+  if (agentsMd === null) {
+    await writeTextFile(agentsMdPath, vaultManagerInstructions);
+  } else {
     await writeTextFile(
-      path.join(workspaceDir, "AGENTS.md"),
-      agentsMd.trimEnd() + "\n\n## Vault Manager\n\nSee [VAULT-MANAGER.md](VAULT-MANAGER.md) for standing orders.\n"
+      agentsMdPath,
+      agentsMd.trimEnd() + "\n\n" + vaultManagerInstructions
     );
   }
 
