@@ -224,6 +224,7 @@ export type WalletResolution = {
   source: "marker" | "override" | "auto-created";
   canonicalName: string;
   nameCollided?: boolean;
+  markerSource?: "auto-created" | "operator-provided";
 };
 
 export type ResolveWalletParams = {
@@ -245,7 +246,8 @@ export async function resolveOrCreateWallet(
       walletAddress: existingMarker.walletAddress,
       passphrase: existingMarker.passphrase,
       source: "marker",
-      canonicalName: existingMarker.canonicalName
+      canonicalName: existingMarker.canonicalName,
+      markerSource: existingMarker.source
     };
   }
 

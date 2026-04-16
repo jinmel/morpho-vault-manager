@@ -648,7 +648,11 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     override
   });
   const wallet = {
-    walletMode: resolution.source === "override" ? "existing" : "created",
+    walletMode:
+      resolution.source === "override" ||
+      (resolution.source === "marker" && resolution.markerSource === "operator-provided")
+        ? "existing"
+        : "created",
     walletRef: resolution.walletRef,
     walletAddress: resolution.walletAddress
   } as const;
