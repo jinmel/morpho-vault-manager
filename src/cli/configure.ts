@@ -24,6 +24,7 @@ import {
   ensureOwsInstalled,
   provisionApiKey,
   resolveOrCreateWallet,
+  writeWalletMarker,
   writeTokenToOpenclawEnv
 } from "../lib/ows-bootstrap.js";
 import { runPlan, type PlanResult } from "../lib/rebalance.js";
@@ -750,6 +751,17 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     }
   }
   provisionSpinner.stop("OWS API key provisioned.");
+
+  if (resolution.source === "override") {
+    await writeWalletMarker(settings, profileId, {
+      walletRef: resolution.walletRef,
+      walletAddress: resolution.walletAddress,
+      passphrase: resolutionPassphrase,
+      source: "operator-provided",
+      canonicalName: resolution.canonicalName,
+      createdAt: new Date().toISOString()
+    });
+  }
 
   await writeTokenToOpenclawEnv(settings, tokenEnvVar, apiResult.token);
 
