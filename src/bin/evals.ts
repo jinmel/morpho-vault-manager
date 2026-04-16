@@ -25,6 +25,7 @@ import type {
 } from "../lib/morpho.js";
 import { saveProfile } from "../lib/profile.js";
 import {
+  parseOwsKeyCreateOutput,
   parseOwsWalletCreateOutput,
   parseOwsWalletList
 } from "../lib/ows-bootstrap.js";
@@ -781,6 +782,25 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
     description: "parseOwsWalletList handles empty output",
     async run() {
       assertEqual("empty", parseOwsWalletList("").length, 0);
+    }
+  },
+  {
+    id: "OBS-BOOT-PARSER-006",
+    description: "parseOwsKeyCreateOutput extracts the token",
+    async run() {
+      const parsed = parseOwsKeyCreateOutput(
+        "Created API key claude-agent (id: abcd-1234)\nToken: ows_key_a1b2c3d4e5f6\n"
+      );
+      if ("error" in parsed) throw new Error(`unexpected parse error: ${parsed.error}`);
+      assertEqual("token", parsed.token, "ows_key_a1b2c3d4e5f6");
+    }
+  },
+  {
+    id: "OBS-BOOT-PARSER-007",
+    description: "parseOwsKeyCreateOutput rejects missing token",
+    async run() {
+      const parsed = parseOwsKeyCreateOutput("no token here");
+      assertTrue("returned error", "error" in parsed);
     }
   },
 ];

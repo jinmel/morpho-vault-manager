@@ -158,3 +158,15 @@ export function parseOwsWalletList(stdout: string): ParsedWalletListEntry[] {
 
   return entries;
 }
+
+export type ParsedKeyCreate = { token: string };
+
+export function parseOwsKeyCreateOutput(
+  stdout: string
+): ParsedKeyCreate | { error: string } {
+  const match = stdout.match(/\bows_key_[A-Za-z0-9_-]{8,}/);
+  if (!match) {
+    return { error: "could not find 'ows_key_...' token in output" };
+  }
+  return { token: match[0] };
+}
