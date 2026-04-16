@@ -901,6 +901,50 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
       assertEqual("no ows calls", calls.length, 0);
     }
   },
+  {
+    id: "CFG-008",
+    description: "Operator override: --wallet selects an existing wallet",
+    async run() {
+      const settings = makeTempSettings();
+      const calls: FakeCall[] = [];
+      // Use 0x1111... because it has no letters, so its EIP-55 checksum is identical
+      // to the lowercase form — avoids depending on keccak output in test fixtures.
+      const listStdout = [
+        "my-wallet  01234567-89ab-cdef-0123-456789abcdef",
+        "  eip155:1     0x1111111111111111111111111111111111111111",
+        "  eip155:8453  0x1111111111111111111111111111111111111111"
+      ].join("\n");
+      const deps = fakeOwsDeps(({ args }) => {
+        if (args[0] === "wallet" && args[1] === "list") {
+          return { stdout: listStdout, stderr: "", code: 0 };
+        }
+        return { stdout: "", stderr: "unexpected", code: 1 };
+      }, calls);
+
+      const resolution = await resolveOrCreateWallet(
+        settings,
+        {
+          profileId: "default",
+          override: { walletRef: "my-wallet", passphrase: "operator-pass" }
+        },
+        deps
+      );
+
+      assertEqual("source", resolution.source, "override");
+      assertEqual(
+        "wallet address",
+        resolution.walletAddress,
+        "0x1111111111111111111111111111111111111111"
+      );
+      assertEqual("canonical name", resolution.canonicalName, "my-wallet");
+      assertEqual("passphrase threaded through", resolution.passphrase, "operator-pass");
+
+      // Marker is NOT yet written for override path — wizard writes it after provisionApiKey succeeds.
+      // resolveOrCreateWallet alone does not persist override resolutions.
+      const marker = await readWalletMarker(settings, "default");
+      assertEqual("marker not yet persisted", marker, null);
+    }
+  },
 ];
 
 function resolvePreflightSettings(inheritPath: boolean): ReturnType<typeof makeTempSettings> {
