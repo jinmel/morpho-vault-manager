@@ -28,6 +28,7 @@ import {
   parseOwsKeyCreateOutput,
   parseOwsWalletCreateOutput,
   parseOwsWalletList,
+  provisionApiKey,
   readWalletMarker,
   resolveOrCreateWallet,
   writeWalletMarker
@@ -943,6 +944,41 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
       // resolveOrCreateWallet alone does not persist override resolutions.
       const marker = await readWalletMarker(settings, "default");
       assertEqual("marker not yet persisted", marker, null);
+    }
+  },
+  {
+    id: "CFG-009",
+    description: "provisionApiKey surfaces bad-passphrase as error code bad_passphrase",
+    async run() {
+      const settings = makeTempSettings();
+      const calls: FakeCall[] = [];
+      const deps = fakeOwsDeps(() => ({
+        stdout: "",
+        stderr: "Error: failed to decrypt mnemonic: bad passphrase",
+        code: 1
+      }), calls);
+
+      let captured: Error | undefined;
+      try {
+        await provisionApiKey(
+          {
+            settings,
+            walletRef: "some-wallet",
+            keyName: "test-agent",
+            passphrase: "wrong"
+          },
+          deps
+        );
+      } catch (error) {
+        captured = error as Error;
+      }
+
+      assertTrue("threw", Boolean(captured));
+      assertEqual(
+        "error code",
+        (captured as Error & { code?: string }).code,
+        "bad_passphrase"
+      );
     }
   },
 ];
