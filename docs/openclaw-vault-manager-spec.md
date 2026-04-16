@@ -100,10 +100,13 @@ Useful follow-up commands:
 
 ```bash
 openclaw vault-manager status
+openclaw vault-manager plan
+openclaw vault-manager allocate
 openclaw vault-manager run-now
 openclaw vault-manager pause
 openclaw vault-manager resume
 openclaw vault-manager reconfigure
+openclaw vault-manager teardown
 ```
 
 The actual periodic execution should use **OpenClaw cron**, not a custom scheduler.
@@ -691,7 +694,7 @@ It should not assume any single model provider.
 - vendored `morpho-cli` skill
 - isolated cron job
 - dry-run + live-run support
-- `status`, `pause`, `resume`, `run-now`
+- `status`, `plan`, `allocate`, `run-now`, `pause`, `resume`, `reconfigure`, `teardown`
 - runtime-gated prepare-only execution (destination contracts come from `morpho-cli` prepare flows, never from agent-authored calldata)
 
 ### Phase 2: Better operator ergonomics
