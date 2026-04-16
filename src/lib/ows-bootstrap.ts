@@ -223,6 +223,7 @@ export type WalletResolution = {
   passphrase: string;
   source: "marker" | "override" | "auto-created";
   canonicalName: string;
+  nameCollided?: boolean;
 };
 
 export type ResolveWalletParams = {
@@ -322,7 +323,8 @@ export async function resolveOrCreateWallet(
     walletAddress: marker.walletAddress,
     passphrase: marker.passphrase,
     source: "auto-created",
-    canonicalName: marker.canonicalName
+    canonicalName: marker.canonicalName,
+    nameCollided: collides
   };
 }
 

@@ -21,6 +21,7 @@ import {
 } from "../lib/openclaw.js";
 import { runPreflightChecks } from "../lib/preflight.js";
 import {
+  canonicalWalletName,
   ensureOwsInstalled,
   provisionApiKey,
   resolveOrCreateWallet,
@@ -655,6 +656,13 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     `Wallet ready: ${resolution.canonicalName} (${resolution.walletAddress}) [${resolution.source}]`,
     "Wallet"
   );
+
+  if (resolution.nameCollided) {
+    await p.note(
+      `An OWS wallet named '${canonicalWalletName(profileId)}' already exists but plugin state is missing. Created '${resolution.canonicalName}' instead. To reuse the original wallet, rerun with:\n  openclaw vault-manager configure --profile ${profileId} --wallet ${canonicalWalletName(profileId)}`,
+      "Wallet Name Collision"
+    );
+  }
 
   const riskProfile = requiredString(
     await p.select({
