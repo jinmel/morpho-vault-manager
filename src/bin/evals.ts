@@ -29,7 +29,8 @@ import {
   parseOwsWalletCreateOutput,
   parseOwsWalletList,
   readWalletMarker,
-  resolveOrCreateWallet
+  resolveOrCreateWallet,
+  writeWalletMarker
 } from "../lib/ows-bootstrap.js";
 import {
   runPlan,
@@ -869,6 +870,35 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
       assertEqual("call count", calls.length, 2);
       assertEqual("first call", calls[0].args.slice(0, 2).join(" "), "wallet list");
       assertEqual("second call", calls[1].args.slice(0, 2).join(" "), "wallet create");
+    }
+  },
+  {
+    id: "CFG-007",
+    description: "Marker reuse: existing marker short-circuits wallet list + create",
+    async run() {
+      const settings = makeTempSettings();
+      const calls: FakeCall[] = [];
+      const deps = fakeOwsDeps(() => ({ stdout: "", stderr: "unexpected call", code: 1 }), calls);
+
+      await writeWalletMarker(settings, "default", {
+        walletRef: "existing-uuid",
+        walletAddress: "0x1111111111111111111111111111111111111111",
+        passphrase: "stored-passphrase",
+        source: "auto-created",
+        canonicalName: "morpho-vault-manager",
+        createdAt: "2026-04-01T00:00:00.000Z"
+      });
+
+      const resolution = await resolveOrCreateWallet(
+        settings,
+        { profileId: "default" },
+        deps
+      );
+
+      assertEqual("source", resolution.source, "marker");
+      assertEqual("walletRef", resolution.walletRef, "existing-uuid");
+      assertEqual("passphrase", resolution.passphrase, "stored-passphrase");
+      assertEqual("no ows calls", calls.length, 0);
     }
   },
 ];
