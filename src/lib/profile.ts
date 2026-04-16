@@ -1,5 +1,6 @@
+import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { readJsonFile, writeJsonFile } from "./fs.js";
+import { readJsonFile, removeFile, writeJsonFile } from "./fs.js";
 import type { VaultManagerProfile, VaultManagerSettings } from "./types.js";
 
 export function resolveProfilePath(settings: VaultManagerSettings, profileId: string): string {
@@ -26,4 +27,21 @@ export async function saveProfile(
   const profilePath = resolveProfilePath(settings, profile.profileId);
   await writeJsonFile(profilePath, profile);
   return profilePath;
+}
+
+export async function listProfileIds(settings: VaultManagerSettings): Promise<string[]> {
+  const profilesDir = path.dirname(settings.defaultProfilePath);
+  try {
+    const entries = await readdir(profilesDir);
+    return entries
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => name.replace(/\.json$/, ""));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+export async function deleteProfileFile(settings: VaultManagerSettings, profileId: string): Promise<boolean> {
+  return removeFile(resolveProfilePath(settings, profileId));
 }

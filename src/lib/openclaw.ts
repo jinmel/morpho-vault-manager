@@ -154,6 +154,45 @@ export async function mcpSetHttpServer(params: {
   };
 }
 
+export async function deleteCronJob(
+  settings: VaultManagerSettings,
+  cronJobId: string
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  const result = await runCommand(settings.openclawCommand, ["cron", "delete", cronJobId, "--force"]);
+  if (result.code === 0) {
+    return { ok: true, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+  }
+  const output = `${result.stdout}\n${result.stderr}`;
+  const notFound = /not found|does not exist|no such/i.test(output);
+  return { ok: notFound, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+}
+
+export async function deleteAgent(
+  settings: VaultManagerSettings,
+  agentId: string
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  const result = await runCommand(settings.openclawCommand, ["agents", "delete", agentId, "--force"]);
+  if (result.code === 0) {
+    return { ok: true, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+  }
+  const output = `${result.stdout}\n${result.stderr}`;
+  const notFound = /not found|does not exist|no such/i.test(output);
+  return { ok: notFound, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+}
+
+export async function mcpUnsetServer(
+  settings: VaultManagerSettings,
+  name: string
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  const result = await runCommand(settings.openclawCommand, ["mcp", "unset", name]);
+  if (result.code === 0) {
+    return { ok: true, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+  }
+  const output = `${result.stdout}\n${result.stderr}`;
+  const notFound = /not found|does not exist|no such/i.test(output);
+  return { ok: notFound, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+}
+
 export async function listCronJobs(settings: VaultManagerSettings): Promise<unknown[] | null> {
   const result = await runCommand(settings.openclawCommand, ["cron", "list", "--all", "--json"]);
   if (result.code !== 0) {

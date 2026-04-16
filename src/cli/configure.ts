@@ -130,11 +130,11 @@ function tokenEnvVarForProfile(settings: VaultManagerSettings, profileId: string
   return `${settings.defaultTokenEnvVar}_${suffix}`;
 }
 
-function agentIdForProfile(settings: VaultManagerSettings, profileId: string): string {
+export function agentIdForProfile(settings: VaultManagerSettings, profileId: string): string {
   return profileId === "default" ? settings.baseAgentId : `${settings.baseAgentId}-${profileId}`;
 }
 
-function workspaceDirForAgent(settings: VaultManagerSettings, agentId: string): string {
+export function workspaceDirForAgent(settings: VaultManagerSettings, agentId: string): string {
   return path.join(settings.workspaceRoot, `workspace-${agentId}`);
 }
 

@@ -8,6 +8,7 @@ import {
   runProfileNow,
   showStatus
 } from "./configure.js";
+import { runTeardown, runTeardownAll } from "./teardown.js";
 import type { CliLogger, VaultManagerSettings } from "../lib/types.js";
 
 type RegisterContext = {
@@ -95,5 +96,21 @@ export function registerVaultManagerCli({ program, logger, settings }: RegisterC
     .option("--profile <id>", "Profile id", "default")
     .action(async (opts: { profile: string }) => {
       await resumeProfile(settings, opts.profile);
+    });
+
+  vaultManager
+    .command("teardown")
+    .description("Remove all resources created by configure for a profile")
+    .option("--profile <id>", "Profile id", "default")
+    .option("--all", "Tear down all profiles", false)
+    .option("--force", "Skip confirmation prompt", false)
+    .option("--keep-logs", "Preserve run logs and receipts", false)
+    .action(async (opts: { profile: string; all: boolean; force: boolean; keepLogs: boolean }) => {
+      logger?.info?.(`vault-manager: teardown ${opts.all ? "(all)" : opts.profile}`);
+      if (opts.all) {
+        await runTeardownAll(settings, opts.force, opts.keepLogs);
+      } else {
+        await runTeardown({ settings, profileId: opts.profile, force: opts.force, keepLogs: opts.keepLogs });
+      }
     });
 }
