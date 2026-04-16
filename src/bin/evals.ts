@@ -1,9 +1,8 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { getAddress, parseUnits, formatUnits } from "viem";
-import { BASE_CHAIN_ID, BASE_USDC_ADDRESS, RISK_PRESETS, USDC_DECIMALS } from "../lib/constants.js";
+import { BASE_USDC_ADDRESS, RISK_PRESETS, USDC_DECIMALS } from "../lib/constants.js";
 import {
   CRON_SCHEDULE_PRESETS,
   describeCronSchedule,
@@ -11,7 +10,6 @@ import {
 } from "../cli/configure.js";
 import { openclawGatewayIsReachable } from "../lib/openclaw.js";
 import { buildApiKeyCreateCommand, buildWalletCreateCommand } from "../lib/ows.js";
-import { writePolicyArtifacts } from "../lib/policy.js";
 import { runPreflightChecks } from "../lib/preflight.js";
 import {
   describeTokenSource,
@@ -242,9 +240,6 @@ async function materializeProfile(
     riskProfile: scenario.profile.riskProfile,
     tokenEnvVar: `OWS_EVAL_${scenario.id.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`,
     usdcAddress: BASE_USDC_ADDRESS,
-    policyId: `eval-policy-${scenario.id}`,
-    policyFile: path.join(settings.dataRoot, "eval", `${scenario.id}-policy.json`),
-    policyExecutable: path.join(settings.dataRoot, "eval", `${scenario.id}-policy.ts`),
     agentId: `vault-manager-eval-${scenario.id}`,
     workspaceDir: path.join(settings.workspaceRoot, `workspace-eval-${scenario.id}`),
     cronJobId: undefined,
@@ -540,119 +535,6 @@ async function runScenario(scenario: Scenario): Promise<void> {
   await scenario.expect(result);
 }
 
-type PolicyDecision = { allow: boolean; reason?: string };
-
-async function runPolicyExecutable(
-  executablePath: string,
-  context: Record<string, unknown>
-): Promise<PolicyDecision> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("node", [executablePath], { stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => (stdout += chunk.toString()));
-    child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`policy executable exited ${code}: ${stderr.trim()}`));
-        return;
-      }
-      try {
-        resolve(JSON.parse(stdout.trim()) as PolicyDecision);
-      } catch (parseError) {
-        reject(new Error(`invalid policy output: ${(parseError as Error).message}\n${stdout}`));
-      }
-    });
-    child.stdin.write(JSON.stringify(context));
-    child.stdin.end();
-  });
-}
-
-function encodeCallData(selector: string, words: string[]): `0x${string}` {
-  return `${selector}${words.map((word) => word.padStart(64, "0")).join("")}` as `0x${string}`;
-}
-
-function addressAsWord(address: string): string {
-  return address.slice(2).toLowerCase().padStart(64, "0");
-}
-
-function uintAsWord(value: bigint): string {
-  return value.toString(16).padStart(64, "0");
-}
-
-type PolicyScenario = {
-  id: string;
-  description: string;
-  setup: (params: { executablePath: string }) => Promise<Record<string, unknown>>;
-  expect: (decision: PolicyDecision) => void;
-};
-
-const POLICY_VAULT = getAddress("0xcccccccccccccccccccccccccccccccccccccccc");
-const NON_USDC_TOKEN = getAddress("0xdddddddddddddddddddddddddddddddddddddddd");
-
-async function buildPolicyEnvironment(): Promise<{ executablePath: string }> {
-  const settings = makeTempSettings();
-  await fs.mkdir(settings.dataRoot, { recursive: true });
-  const artifacts = await writePolicyArtifacts({
-    settings,
-    profileId: "eval",
-    riskPreset: RISK_PRESETS.balanced
-  });
-  return { executablePath: artifacts.executablePath };
-}
-
-const POLICY_SCENARIOS: PolicyScenario[] = [
-  {
-    id: "POL-002",
-    description: "Chain restriction enforced",
-    async setup() {
-      return {
-        chain_id: "eip155:1",
-        transaction: {
-          to: POLICY_VAULT,
-          data: encodeCallData("0x6e553f65", [uintAsWord(1_000_000n), addressAsWord(SCENARIO_WALLET)]),
-          value: "0"
-        }
-      };
-    },
-    expect(decision) {
-      assertEqual("allow", decision.allow, false);
-      if (!decision.reason?.includes("chain")) {
-        throw new Error(`expected chain rejection, got ${JSON.stringify(decision)}`);
-      }
-    }
-  },
-  {
-    id: "POL-003",
-    description: "Approval target restricted to USDC",
-    async setup() {
-      const approveSelector = "0x095ea7b3";
-      return {
-        chain_id: BASE_CHAIN_ID,
-        transaction: {
-          to: NON_USDC_TOKEN,
-          data: encodeCallData(approveSelector, [addressAsWord(POLICY_VAULT), uintAsWord(1_000_000n)]),
-          value: "0"
-        }
-      };
-    },
-    expect(decision) {
-      assertEqual("allow", decision.allow, false);
-      if (!decision.reason?.toLowerCase().includes("usdc")) {
-        throw new Error(`expected USDC rejection, got ${JSON.stringify(decision)}`);
-      }
-    }
-  }
-];
-
-async function runPolicyScenario(scenario: PolicyScenario): Promise<void> {
-  const env = await buildPolicyEnvironment();
-  const context = await scenario.setup({ executablePath: env.executablePath });
-  const decision = await runPolicyExecutable(env.executablePath, context);
-  scenario.expect(decision);
-}
-
 type SystemScenario = {
   id: string;
   description: string;
@@ -759,13 +641,9 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
       const apiKeyCommand = buildApiKeyCreateCommand({
         settings,
         keyName: "vault-manager-test-agent",
-        walletRef: "vault-manager-test",
-        policyId: "morpho-vault-manager-default"
+        walletRef: "vault-manager-test"
       });
-      assertTrue(
-        "api key references policy",
-        apiKeyCommand.includes('--policy "morpho-vault-manager-default"')
-      );
+      assertFalse("api key references policy", apiKeyCommand.includes("--policy"));
       if (/token=|passphrase=|--secret/.test(apiKeyCommand)) {
         throw new Error("api key command should not contain inline secret material");
       }
@@ -850,14 +728,11 @@ async function main(): Promise<void> {
   const rebalanceSelected = only
     ? SCENARIOS.filter((scenario) => scenario.id === only)
     : SCENARIOS;
-  const policySelected = only
-    ? POLICY_SCENARIOS.filter((scenario) => scenario.id === only)
-    : POLICY_SCENARIOS;
   const systemSelected = only
     ? SYSTEM_SCENARIOS.filter((scenario) => scenario.id === only)
     : SYSTEM_SCENARIOS;
 
-  const totalSelected = rebalanceSelected.length + policySelected.length + systemSelected.length;
+  const totalSelected = rebalanceSelected.length + systemSelected.length;
   if (totalSelected === 0) {
     throw new Error(`No matching scenarios for filter ${only}`);
   }
@@ -879,17 +754,6 @@ async function main(): Promise<void> {
     process.stdout.write(`[eval] ${scenario.id} ${scenario.description} ... `);
     try {
       await runScenario(scenario);
-      process.stdout.write("pass\n");
-    } catch (error) {
-      failed += 1;
-      process.stdout.write(`fail\n  ${(error as Error).message}\n`);
-    }
-  }
-
-  for (const scenario of policySelected) {
-    process.stdout.write(`[eval] ${scenario.id} ${scenario.description} ... `);
-    try {
-      await runPolicyScenario(scenario);
       process.stdout.write("pass\n");
     } catch (error) {
       failed += 1;

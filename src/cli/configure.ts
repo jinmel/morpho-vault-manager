@@ -16,11 +16,10 @@ import {
   runCronJobNow,
   upsertCronJob
 } from "../lib/openclaw.js";
-import { writePolicyArtifacts } from "../lib/policy.js";
 import { runPreflightChecks } from "../lib/preflight.js";
 import { commandExists } from "../lib/shell.js";
 import { runRebalance, type RebalanceRunResult } from "../lib/rebalance.js";
-import { buildApiKeyCreateCommand, buildWalletCreateCommand, runOwsPolicyCreate } from "../lib/ows.js";
+import { buildApiKeyCreateCommand, buildWalletCreateCommand } from "../lib/ows.js";
 import { loadProfile, saveProfile } from "../lib/profile.js";
 import { renderAgentInstructions } from "../lib/template.js";
 import type {
@@ -716,23 +715,6 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     initialValue: existing.profile?.cronEnabled ?? false
   }), "cron enable confirmation");
 
-  const policyArtifacts = await writePolicyArtifacts({
-    settings,
-    profileId,
-    usdcAddress: BASE_USDC_ADDRESS,
-    riskPreset
-  });
-
-  const policyCreation = await runOwsPolicyCreate(settings, policyArtifacts.policyFilePath);
-  const createdPolicy = policyCreation.ok;
-
-  if (!policyCreation.ok) {
-    await p.note(
-      `Automatic policy creation failed.\n\nRun this manually and rerun configure if needed:\n${settings.owsCommand} policy create --file "${policyArtifacts.policyFilePath}"\n\nstderr:\n${policyCreation.stderr || "(empty)"}`,
-      "OWS Policy"
-    );
-  }
-
   const tokenSourceDescription = describeTokenSource(tokenSource);
   const tokenProvisioningHint = (() => {
     if (tokenSource.kind === "env") {
@@ -755,8 +737,7 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
       buildApiKeyCreateCommand({
         settings,
         keyName: `${agentId}-agent`,
-        walletRef: wallet.walletRef,
-        policyId: policyArtifacts.policyId
+        walletRef: wallet.walletRef
       }),
       "",
       tokenProvisioningHint,
@@ -802,9 +783,6 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     tokenEnvVar,
     tokenSource,
     usdcAddress: BASE_USDC_ADDRESS,
-    policyId: policyArtifacts.policyId,
-    policyFile: policyArtifacts.policyFilePath,
-    policyExecutable: policyArtifacts.executablePath,
     agentId,
     workspaceDir,
     cronJobId: existing.profile?.cronJobId,
@@ -891,7 +869,6 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
   return {
     profile,
     profilePath,
-    createdPolicy,
     createdAgent: agentResult.created,
     createdCron: cronResult.created
   };
@@ -933,7 +910,6 @@ export async function showStatus(settings: VaultManagerSettings, profileId: stri
     cronKnownToGateway: Boolean(cronJob),
     cronEnabled: profile.cronEnabled,
     notifications: profile.notifications,
-    policyId: profile.policyId,
     lastFundedCheckAt: profile.lastFundedCheckAt ?? null,
     lastFundedUsdc: profile.lastFundedUsdc ?? null,
     lastValidationRun: profile.lastValidationRun ?? null,
@@ -958,7 +934,6 @@ export async function showStatus(settings: VaultManagerSettings, profileId: stri
       `Workspace: ${summary.workspaceDir}`,
       `Cron job: ${summary.cronJobId ?? "missing"} (${summary.cronKnownToGateway ? "known" : "not found"})`,
       `Cron enabled: ${summary.cronEnabled ? "yes" : "no"}`,
-      `Policy: ${summary.policyId}`,
       `Last funded check: ${summary.lastFundedCheckAt ?? "never"}${
         summary.lastFundedUsdc ? ` (${summary.lastFundedUsdc} USDC)` : ""
       }`,

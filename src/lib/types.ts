@@ -50,9 +50,6 @@ export type VaultManagerProfile = {
   tokenEnvVar: string;
   tokenSource?: TokenSource;
   usdcAddress: string;
-  policyId: string;
-  policyFile: string;
-  policyExecutable: string;
   agentId: string;
   workspaceDir: string;
   cronJobId?: string;
@@ -80,7 +77,6 @@ export type VaultManagerProfile = {
 export type ConfigureResult = {
   profile: VaultManagerProfile;
   profilePath: string;
-  createdPolicy: boolean;
   createdAgent: boolean;
   createdCron: boolean;
 };

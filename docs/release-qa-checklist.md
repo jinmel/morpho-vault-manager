@@ -61,7 +61,7 @@ Use this checklist on the candidate package that will be published. The goal is 
 - [ ] No owner credentials, mnemonics, raw private keys, or API token values are written to profile JSON, workspace files, or logs.
 - [ ] Live execution refuses to run unless explicitly armed.
 - [ ] A simulation failure produces an explicit blocked result.
-- [ ] A policy denial produces an explicit blocked result.
+- [ ] An OWS signing failure produces an explicit blocked result.
 - [ ] The write path remains Base-only and USDC-only.
 - [ ] JSONL run logs contain phase transitions and outcomes without unredacted secret material.
 

@@ -63,7 +63,6 @@ Manage the configured wallet as a constrained Morpho vault allocator on Base. Th
 ## Escalation Conditions
 
 - Simulation failure
-- OWS policy denial
 - Non-USDC vault position or non-vault Morpho market position on the wallet
 - Proposed move exceeds turnover limits
 - Missing dependency or broken local tooling

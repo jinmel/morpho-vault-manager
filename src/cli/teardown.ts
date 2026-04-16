@@ -12,7 +12,6 @@ type TeardownResult = {
   cronDeleted: boolean;
   agentDeleted: boolean;
   workspaceRemoved: boolean;
-  policyRemoved: boolean;
   logsRemoved: boolean;
   runsRemoved: boolean;
   profileRemoved: boolean;
@@ -36,7 +35,6 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
     cronDeleted: false,
     agentDeleted: false,
     workspaceRemoved: false,
-    policyRemoved: false,
     logsRemoved: false,
     runsRemoved: false,
     profileRemoved: false,
@@ -48,7 +46,6 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
   const agentId = profile?.agentId ?? agentIdForProfile(settings, profileId);
   const workspaceDir = profile?.workspaceDir ?? workspaceDirForAgent(settings, agentId);
   const cronJobId = profile?.cronJobId;
-  const policyDir = path.join(settings.dataRoot, "policies", profileId);
   const logsDir = path.join(settings.dataRoot, "logs", profileId);
   const runsDir = path.join(settings.dataRoot, "runs", profileId);
 
@@ -56,7 +53,6 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
   if (cronJobId) items.push(`Cron job: ${cronJobId}`);
   items.push(`Agent: ${agentId}`);
   items.push(`Workspace: ${workspaceDir} (${await pathExists(workspaceDir) ? "exists" : "not found"})`);
-  items.push(`Policies: ${policyDir} (${await pathExists(policyDir) ? "exists" : "not found"})`);
   if (!keepLogs) {
     items.push(`Logs: ${logsDir} (${await pathExists(logsDir) ? "exists" : "not found"})`);
     items.push(`Runs: ${runsDir} (${await pathExists(runsDir) ? "exists" : "not found"})`);
@@ -91,13 +87,6 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
     result.errors.push(`Workspace removal failed: ${(error as Error).message}`);
   }
 
-  try {
-    await removeDir(policyDir);
-    result.policyRemoved = true;
-  } catch (error) {
-    result.errors.push(`Policy removal failed: ${(error as Error).message}`);
-  }
-
   if (!keepLogs) {
     try {
       await removeDir(logsDir);
@@ -129,7 +118,6 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
       `Cron job: ${cronJobId ? (result.cronDeleted ? "removed" : "FAILED") : "none"}`,
       `Agent: ${result.agentDeleted ? "removed" : "FAILED"}`,
       `Workspace: ${result.workspaceRemoved ? "removed" : "FAILED"}`,
-      `Policies: ${result.policyRemoved ? "removed" : "FAILED"}`,
       ...(keepLogs ? [] : [
         `Logs: ${result.logsRemoved ? "removed" : "FAILED"}`,
         `Runs: ${result.runsRemoved ? "removed" : "FAILED"}`
@@ -137,11 +125,6 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
       `Profile: ${result.profileRemoved ? "removed" : "FAILED"}`,
       ...(result.mcpRemoved ? ["MCP server: removed (no profiles remain)"] : [])
     ];
-
-    if (profile?.policyId) {
-      summary.push("");
-      summary.push(`Manual cleanup: ${settings.owsCommand} policy delete ${profile.policyId}`);
-    }
 
     await p.note(summary.join("\n"), "Teardown complete");
   }
