@@ -31,7 +31,7 @@ export type RiskPreset = {
   description: string;
   maxVaults: number;
   maxSingleVaultPct: number;
-  rebalanceDriftPct: number;
+
   maxTurnoverUsd: number;
   cashBufferUsd: number;
   minimumVaultTvlUsd: number;

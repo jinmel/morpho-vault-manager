@@ -12,7 +12,7 @@ export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
     description: "Favor established vaults and lower turnover.",
     maxVaults: 2,
     maxSingleVaultPct: 0.6,
-    rebalanceDriftPct: 0.1,
+
     maxTurnoverUsd: 5000,
     cashBufferUsd: 250,
     minimumVaultTvlUsd: 5_000_000,
@@ -30,7 +30,7 @@ export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
     description: "Optimize for yield while keeping concentration moderate.",
     maxVaults: 3,
     maxSingleVaultPct: 0.5,
-    rebalanceDriftPct: 0.075,
+
     maxTurnoverUsd: 10_000,
     cashBufferUsd: 100,
     minimumVaultTvlUsd: 2_500_000,
@@ -45,10 +45,10 @@ export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
   aggressive: {
     id: "aggressive",
     label: "Aggressive",
-    description: "Move faster and accept tighter drift bounds.",
+    description: "Maximize yield with higher turnover and concentration.",
     maxVaults: 4,
     maxSingleVaultPct: 0.7,
-    rebalanceDriftPct: 0.05,
+
     maxTurnoverUsd: 25_000,
     cashBufferUsd: 50,
     minimumVaultTvlUsd: 1_000_000,

@@ -789,53 +789,6 @@ async function promptCronSchedule(
   );
 }
 
-async function runValidationPlan(
-  settings: VaultManagerSettings,
-  profileId: string
-): Promise<PlanResult | null> {
-  const wantsValidation = requiredBoolean(await p.confirm({
-    message: "Run a validation plan now against live Morpho state?",
-    initialValue: true
-  }), "validation confirmation");
-
-  if (!wantsValidation) return null;
-
-  const spinner = p.spinner();
-  spinner.start("Computing rebalance plan");
-  try {
-    const result = await runPlan(settings, profileId);
-    spinner.stop(`Plan: ${result.status}`);
-    await p.note(
-      [
-        `Status:  ${result.status}`,
-        `Wallet:  ${result.walletAddress}`,
-        `Managed USDC: ${result.metrics.totalManagedUsdc}`,
-        `Idle USDC:    ${result.metrics.idleUsdc}`,
-        `Planned turnover: ${result.metrics.totalPlannedTurnoverUsdc}`,
-        `Receipt: ${result.receiptPath}`,
-        ...(result.reasons.length > 0 ? ["", "Reasons:", ...result.reasons.map((reason: string) => `- ${reason}`)] : []),
-        ...(result.actions.length > 0
-          ? [
-              "",
-              "Planned actions:",
-              ...result.actions.map(
-                (action: { kind: string; amountUsdc: string; vaultName: string }) => `- ${action.kind} ${action.amountUsdc} USDC via ${action.vaultName}`
-              )
-            ]
-          : [])
-      ].join("\n"),
-      "Validation Plan"
-    );
-    return result;
-  } catch (error) {
-    spinner.stop("Plan failed");
-    await p.note(
-      `Validation plan failed: ${(error as Error).message}`,
-      "Validation Error"
-    );
-    return null;
-  }
-}
 
 export async function runConfigureFlow(context: ConfigureContext): Promise<ConfigureResult> {
   const { settings, profileId } = context;
@@ -1083,17 +1036,19 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     "Configured"
   );
 
-  const validationResult = await runValidationPlan(settings, profileId);
-  if (validationResult) {
-    profile.lastValidationRun = {
-      runId: validationResult.runId,
-      status: validationResult.status,
-      receiptPath: validationResult.receiptPath,
-      createdAt: validationResult.createdAt
-    };
-    profile.updatedAt = new Date().toISOString();
-    profilePath = await saveProfile(settings, profile);
-  }
+  await p.note(
+    [
+      "Your vault manager profile is ready.",
+      "",
+      "To perform the initial allocation of your funds into Morpho vaults, run:",
+      "",
+      `  openclaw vault-manager allocate --profile ${profileId}`,
+      "",
+      "This will invoke the agent to compute a plan and execute the allocation",
+      "using morpho-cli and OWS."
+    ].join("\n"),
+    "Next Step"
+  );
 
   p.outro("Vault manager configuration complete.");
 
@@ -1230,6 +1185,20 @@ export async function resumeProfile(settings: VaultManagerSettings, profileId: s
   profile.updatedAt = new Date().toISOString();
   await saveProfile(settings, profile);
   p.outro(`Resumed ${profileId}.`);
+}
+
+export async function allocateProfile(settings: VaultManagerSettings, profileId: string): Promise<void> {
+  const loaded = await loadProfile(settings, profileId);
+  const profile = loaded.profile;
+  if (!profile || !profile.cronJobId) {
+    fail(`Profile ${profileId} does not have a cron job. Run "openclaw vault-manager configure" first.`);
+  }
+
+  const output = await runCronJobNow(settings, profile.cronJobId);
+  await p.note(
+    output || "Agent run enqueued. The agent will compute a plan and execute the allocation using morpho-cli and OWS.",
+    `Allocate: ${profileId}`
+  );
 }
 
 export async function runProfileNow(settings: VaultManagerSettings, profileId: string): Promise<void> {

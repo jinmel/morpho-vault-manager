@@ -22,7 +22,7 @@ Use this checklist on the candidate package that will be published. The goal is 
 - [ ] `openclaw plugins enable morpho-vault-manager` succeeds.
 - [ ] `openclaw gateway restart` succeeds.
 - [ ] The plugin is visible in OpenClaw plugin state after restart.
-- [ ] `openclaw vault-manager --help` shows `configure`, `reconfigure`, `status`, `run-now`, `plan`, `pause`, and `resume`.
+- [ ] `openclaw vault-manager --help` shows `configure`, `reconfigure`, `status`, `allocate`, `run-now`, `plan`, `pause`, and `resume`.
 
 ## Configure Verification
 

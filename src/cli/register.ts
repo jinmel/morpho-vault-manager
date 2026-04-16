@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import {
+  allocateProfile,
   pauseProfile,
   resumeProfile,
   runConfigureFlow,
@@ -52,6 +53,14 @@ export function registerVaultManagerCli({ program, logger, settings }: RegisterC
     .option("--json", "Output JSON", false)
     .action(async (opts: { profile: string; json: boolean }) => {
       await showStatus(settings, opts.profile, opts.json);
+    });
+
+  vaultManager
+    .command("allocate")
+    .description("Invoke the agent to allocate funds into Morpho vaults")
+    .option("--profile <id>", "Profile id", "default")
+    .action(async (opts: { profile: string }) => {
+      await allocateProfile(settings, opts.profile);
     });
 
   vaultManager

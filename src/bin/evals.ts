@@ -289,7 +289,7 @@ const SCENARIOS: Scenario[] = [
   },
   {
     id: "REB-002",
-    description: "Dry-run no-op below drift threshold",
+    description: "No-op when positions are near target allocation",
     profile: {
       riskProfile: "balanced"
     },
@@ -301,7 +301,7 @@ const SCENARIOS: Scenario[] = [
     idleUsdc: "100",
     expect(result) {
       assertEqual("status", result.status, "no_op");
-      assertContainsReason(result, "below the configured threshold");
+      assertContainsReason(result, "rounded down to zero");
     }
   },
   {
@@ -430,13 +430,8 @@ const SCENARIOS: Scenario[] = [
     idleUsdc: "0",
     expect(result) {
       assertEqual("status", result.status, "planned");
-      if (Number(result.metrics.maxObservedDriftPct) >= Number(result.metrics.driftThresholdPct)) {
-        throw new Error(
-          `expected drift to remain below threshold, got ${result.metrics.maxObservedDriftPct}% >= ${result.metrics.driftThresholdPct}%`
-        );
-      }
       const withdrewFromTopSetChange = result.actions.some(
-        (action) => action.kind === "withdraw" && action.vaultAddress === VAULT_D.address
+        (action: { kind: string; vaultAddress: string }) => action.kind === "withdraw" && action.vaultAddress === VAULT_D.address
       );
       assertTrue("withdraw from changed top set", withdrewFromTopSetChange);
     }

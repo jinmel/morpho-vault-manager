@@ -58,8 +58,6 @@ export type PlanResult = {
     idleUsdc: string;
     totalManagedUsdc: string;
     targetCashBufferUsdc: string;
-    driftThresholdPct: string;
-    maxObservedDriftPct: string;
     turnoverCapUsdc: string;
     totalPlannedTurnoverUsdc: string;
   };
@@ -134,17 +132,11 @@ function formatUsdc(value: bigint): string {
   return formatUnits(value, USDC_DECIMALS);
 }
 
-function bigintAbs(value: bigint): bigint {
-  return value < 0n ? -value : value;
-}
 
 function sum(values: bigint[]): bigint {
   return values.reduce((total, value) => total + value, 0n);
 }
 
-function percentString(value: number): string {
-  return value.toFixed(2);
-}
 
 function ratioPctString(numerator: bigint, denominator: bigint): string {
   if (denominator <= 0n) return "0.00";
@@ -390,42 +382,6 @@ function capDepositsToAvailableCash(actions: ActionDraft[], currentIdle: bigint,
   );
 }
 
-function driftExceeded(
-  totalManaged: bigint,
-  targetIdle: bigint,
-  currentIdle: bigint,
-  currentAmounts: Map<string, bigint>,
-  targetAmounts: Map<string, bigint>,
-  preset: RiskPreset
-): { exceeded: boolean; maxObservedPct: string } {
-  if (totalManaged <= 0n) {
-    return { exceeded: false, maxObservedPct: "0.00" };
-  }
-
-  let maxDrift = bigintAbs(currentIdle - targetIdle);
-  for (const [address, currentAmount] of currentAmounts.entries()) {
-    const targetAmount = targetAmounts.get(address) ?? 0n;
-    const drift = bigintAbs(currentAmount - targetAmount);
-    if (drift > maxDrift) maxDrift = drift;
-  }
-
-  for (const [address, targetAmount] of targetAmounts.entries()) {
-    if (currentAmounts.has(address)) continue;
-    if (targetAmount > maxDrift) maxDrift = targetAmount;
-  }
-
-  const maxObservedPct = ratioPctString(maxDrift, totalManaged);
-  const thresholdAmount = scaleAmount(
-    totalManaged,
-    BigInt(Math.round(preset.rebalanceDriftPct * 10_000)),
-    10_000n
-  );
-
-  return {
-    exceeded: maxDrift > thresholdAmount,
-    maxObservedPct
-  };
-}
 
 function buildActionDrafts(params: {
   selected: RankedCandidate[];
@@ -591,14 +547,6 @@ export async function runPlan(
   const targetIdle = targetCashBuffer(totalManaged, profile.riskPreset);
   const investable = totalManaged > targetIdle ? totalManaged - targetIdle : 0n;
   const targetAmounts = allocateTargets(investable, selected, profile.riskPreset);
-  const drift = driftExceeded(
-    totalManaged,
-    targetIdle,
-    idleUsdc,
-    currentAmounts,
-    targetAmounts,
-    profile.riskPreset
-  );
 
   const vaultNames = new Map<string, string>();
   for (const vault of liveVaults) vaultNames.set(vault.address, vault.name);
@@ -638,13 +586,6 @@ export async function runPlan(
     if (selected.length === 0) {
       reasons.push("No candidate vaults passed the current risk constraints.");
     }
-    if (totalManaged > 0n && !drift.exceeded && !topVaultSetChange.changed) {
-      reasons.push(
-        `Current allocation drift (${drift.maxObservedPct}%) is below the configured threshold (${percentString(
-          profile.riskPreset.rebalanceDriftPct * 100
-        )}%).`
-      );
-    }
   }
 
   if (actions.length === 0 && reasons.length === 0 && blockers.length === 0) {
@@ -655,8 +596,6 @@ export async function runPlan(
     totalManagedUsdc: formatUsdc(totalManaged),
     idleUsdc: formatUsdc(idleUsdc),
     targetCashBufferUsdc: formatUsdc(targetIdle),
-    driftExceeded: drift.exceeded,
-    maxObservedDriftPct: drift.maxObservedPct,
     topVaultSetChangedMaterially: topVaultSetChange.changed,
     nonUsdcVaultPositionCount: nonUsdcVaultRejections.length,
     marketPositionCount: positionsResponse.marketPositions.length,
@@ -693,8 +632,6 @@ export async function runPlan(
       idleUsdc: formatUsdc(idleUsdc),
       totalManagedUsdc: formatUsdc(totalManaged),
       targetCashBufferUsdc: formatUsdc(targetIdle),
-      driftThresholdPct: percentString(profile.riskPreset.rebalanceDriftPct * 100),
-      maxObservedDriftPct: drift.maxObservedPct,
       turnoverCapUsdc: formatUsdc(turnoverCap),
       totalPlannedTurnoverUsdc: formatUsdc(plannedTurnover(actions))
     },
