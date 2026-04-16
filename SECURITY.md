@@ -28,14 +28,15 @@ We do not assume the prompt alone will prevent unsafe execution.
 
 ### Owner Credential
 
-- Full wallet authority
-- Must never be used by the periodic vault-manager agent
+- Full wallet authority.
+- Must never be used by the running vault-manager agent.
+- For auto-created wallets, the plugin holds the wallet passphrase in `~/.openclaw/vault-manager/state/<profileId>.wallet.json` so configure/reconfigure can provision API keys non-interactively. The passphrase is owner-equivalent; protecting this file (mode 0600) is the operator's responsibility.
 
 ### OWS API Token
 
 - Scoped to one wallet for v1
 - The only credential the agent may use
-- In v1, the raw token is provisioned out-of-process so the plugin never needs to load it into process memory
+- The configure flow captures the token from `ows key create` stdout and forwards it to `openclaw config set env.vars.<var>`. The token transits plugin process memory during configure; it is not persisted to plugin files.
 
 ### Broadcast Path
 
@@ -64,6 +65,7 @@ Morpho protocol interaction is provided via the `morpho-cli` workspace skill (fr
 - Do not log owner credentials, API tokens, private keys, mnemonics, or raw decrypted secret material.
 - If logging command lines, redact secrets and token-like strings.
 - If logging transaction plans, prefer summarized transaction metadata over full sensitive payload dumps unless debugging is explicitly enabled.
+- `ows wallet create --show-mnemonic` output must be redacted before display or logging. The bootstrap adapter captures stdout in memory and never echoes it.
 
 ## Storage Rules
 
@@ -73,6 +75,7 @@ Morpho protocol interaction is provided via the `morpho-cli` workspace skill (fr
 - `file` sources are intended for mounted-secret setups (Docker/k8s/systemd EnvironmentFile). File contents are read at execution time and never copied into the profile.
 - Profile files may contain public addresses, wallet IDs, thresholds, cron metadata, delivery targets/account ids, and the token source descriptor (kind + identifier), never the token value itself.
 - The configure flow should emit the OWS API-key provisioning command and then accept only the resulting token source descriptor, not the raw token.
+- Wallet marker files may hold a wallet passphrase and mnemonic for auto-created wallets. They live at `~/.openclaw/vault-manager/state/<profileId>.wallet.json` with mode 0600 and are removed by `teardown`.
 
 ## Cron Delivery
 
