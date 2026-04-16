@@ -258,8 +258,14 @@ export async function deleteCronJob(
   settings: VaultManagerSettings,
   cronJobId: string
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  const result = await runCommand(settings.openclawCommand, ["cron", "delete", cronJobId, "--force"]);
+  const result = await runCommand(settings.openclawCommand, ["cron", "remove", cronJobId, "--json"]);
   if (result.code === 0) {
+    const parsed = parseJson<Record<string, unknown>>(result.stdout);
+    const removed = parsed?.removed;
+    const ok = parsed?.ok;
+    if (removed === false && ok === true) {
+      return { ok: true, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+    }
     return { ok: true, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
   }
   const output = `${result.stdout}\n${result.stderr}`;
