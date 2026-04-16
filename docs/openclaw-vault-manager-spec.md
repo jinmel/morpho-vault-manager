@@ -96,18 +96,58 @@ The configure flow uses `clack` and walks the user through:
 
 ### Ongoing Use
 
-Useful follow-up commands:
+After configuration, the plugin exposes these subcommands. All accept `--profile <id>` (default: `"default"`).
 
-```bash
-openclaw vault-manager status
-openclaw vault-manager plan
-openclaw vault-manager allocate
-openclaw vault-manager run-now
-openclaw vault-manager pause
-openclaw vault-manager resume
-openclaw vault-manager reconfigure
-openclaw vault-manager teardown
-```
+#### `status`
+
+Show profile, workspace, cron, and token status. Accepts `--json` for machine-readable output.
+
+Loads the profile from disk, checks whether the cron job is known to the gateway, and probes the configured token source for readiness. Displays wallet address, risk config, schedule, delivery target, model preference, last funded check, and last validation run.
+
+#### `plan`
+
+Compute a deterministic rebalance plan without executing any transactions. Accepts `--json`.
+
+Calls the rebalance engine to score candidate vaults, compute target allocations, evaluate drift, and produce a list of planned deposit/withdraw actions. Writes a receipt JSON and JSONL log to the data root. This is the same computation that the cron agent uses as its first step.
+
+#### `allocate`
+
+Invoke the agent to allocate funds into Morpho vaults. Queues an immediate cron run via `openclaw cron run` and returns without waiting for completion. The agent then computes a plan and executes through morpho-cli and OWS.
+
+This is the recommended command for the initial deposit after configure, since the wallet typically starts with idle USDC and no vault positions.
+
+> **Note:** `allocate` and `run-now` are functionally identical — both queue an immediate cron execution. `allocate` is named for the initial funding use case; `run-now` is for ad-hoc rebalance triggers.
+
+#### `run-now`
+
+Queue an immediate cron run for the profile. Same behavior as `allocate`.
+
+#### `pause`
+
+Disable the profile's cron job. Calls `openclaw cron disable`, sets `cronEnabled: false` on the profile, and saves. No confirmation prompt.
+
+#### `resume`
+
+Enable the profile's cron job. Calls `openclaw cron enable`, sets `cronEnabled: true` on the profile, and saves. No confirmation prompt.
+
+#### `reconfigure`
+
+Re-run the full configure flow for an existing profile. Identical to `configure` but pre-populates prompts with the profile's current values.
+
+#### `teardown`
+
+Remove all resources created by configure for a profile. Accepts `--all`, `--force`, and `--keep-logs`.
+
+Deletion sequence:
+1. Delete the cron job via `openclaw cron remove`
+2. Delete the OpenClaw agent via `openclaw agents delete`
+3. Remove the agent workspace directory
+4. Remove run logs and receipts (unless `--keep-logs`)
+5. Delete the profile file
+
+Shows a confirmation prompt unless `--force` is set. Errors are accumulated and reported rather than failing on the first error. If the profile file is missing, teardown still attempts to clean up derived resources (agent, workspace).
+
+`--all` discovers all profile IDs and tears down each one in sequence.
 
 The actual periodic execution should use **OpenClaw cron**, not a custom scheduler.
 
