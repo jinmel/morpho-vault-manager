@@ -76,3 +76,10 @@ Use this checklist on the candidate package that will be published. The goal is 
 - [ ] Fresh install path verified by a human from the packed artifact or published package.
 - [ ] Configure flow verified by a human on a clean environment.
 - [ ] Release-blocking issues from this checklist are either fixed or explicitly waived before publish.
+
+## Configure Wizard Automation
+
+- [ ] Fresh machine without `ows` on PATH: install-confirm → auto-create wallet → configure completes without asking the operator to run any shell commands.
+- [ ] Machine with a preexisting OWS wallet the operator wants to reuse: `--wallet <ref>` + passphrase prompt → configure completes and reuses the wallet. Marker file appears at `~/.openclaw/vault-manager/state/<profileId>.wallet.json` with mode 0600.
+- [ ] Reconfigure the same profile: no wallet or token prompts fire beyond the kept decision list (risk, model, cron, delivery, funding check, validation run).
+- [ ] Teardown removes the wallet marker file alongside profile/workspace/cron/agent cleanup.
