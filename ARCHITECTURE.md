@@ -78,16 +78,16 @@ The rebalance runtime uses `morpho-cli` directly. Morpho skill content is instal
 
 1. User runs `openclaw vault-manager configure`.
 2. Plugin checks for required tools and daemon assumptions.
-3. Plugin creates or imports an OWS wallet.
-4. Plugin emits OWS API-key provisioning instructions, and the operator completes token creation out-of-process so the raw token never enters plugin process memory.
-6. Plugin records the risk profile.
-7. Plugin offers funding guidance and an optional "continue once funded" balance poll against Morpho token reads.
-8. Plugin offers optional model-routing preference for the dedicated agent.
-9. Plugin creates a dedicated OpenClaw agent workspace.
-10. Plugin writes `AGENTS.md` standing orders into that workspace.
-11. Plugin configures cron delivery for that profile: default `channel=last`, or an explicit Telegram target discovered from OpenClaw directory surfaces.
-12. Plugin creates an isolated OpenClaw cron job for periodic execution.
-13. Plugin runs a final validation plan against live Morpho state and persists the outcome in the profile.
+3. Plugin auto-resolves or creates the OWS wallet (marker file → operator override via `--wallet` → zero-touch auto-create). Wallet passphrase is generated and stored locally for auto-created wallets; operator-provided wallets accept a one-time masked passphrase prompt or an env-supplied value.
+4. Plugin auto-provisions the OWS API key and wires the token into the OpenClaw gateway env (`openclaw config set env.vars.<var>`).
+5. Plugin records the risk profile.
+6. Plugin offers funding guidance and an optional "continue once funded" balance poll against Morpho token reads.
+7. Plugin offers optional model-routing preference for the dedicated agent.
+8. Plugin creates a dedicated OpenClaw agent workspace.
+9. Plugin writes `AGENTS.md` standing orders into that workspace.
+10. Plugin configures cron delivery for that profile: default `channel=last`, or an explicit Telegram target discovered from OpenClaw directory surfaces.
+11. Plugin creates an isolated OpenClaw cron job for periodic execution.
+12. Plugin runs a final validation plan against live Morpho state and persists the outcome in the profile.
 
 ### Rebalance Run
 
@@ -147,6 +147,7 @@ This is the intended direction for the repo:
 - wallet lookup
 - API key management
 - sign wrapper plus broadcast/receipt verification
+- wallet bootstrap (resolve or create), passphrase-marker lifecycle, API-key provisioning and token routing
 
 ### Morpho Adapter
 
