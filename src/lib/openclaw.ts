@@ -95,6 +95,20 @@ export function buildCronDeliveryArgs(profile: VaultManagerProfile, settings: Va
   ];
 }
 
+export async function setEnvVar(
+  settings: VaultManagerSettings,
+  name: string,
+  value: string
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  const result = await runCommand(settings.openclawCommand, [
+    "config",
+    "set",
+    `env.vars.${name}`,
+    value
+  ]);
+  return { ok: result.code === 0, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+}
+
 export async function openclawGatewayIsReachable(settings: VaultManagerSettings): Promise<boolean> {
   const result = await runCommand(settings.openclawCommand, ["gateway", "status"]);
   return result.code === 0;

@@ -63,7 +63,6 @@ Manage the configured wallet as a constrained Morpho vault allocator on Base. Th
 
 - No USDC balance and no current positions
 - No candidate vaults passed the current risk constraints
-- All computed actions are below the minimum action size
 
 ## Escalation Conditions
 

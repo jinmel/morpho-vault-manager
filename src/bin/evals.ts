@@ -301,7 +301,7 @@ const SCENARIOS: Scenario[] = [
     idleUsdc: "0",
     expect(result) {
       assertEqual("status", result.status, "no_op");
-      assertContainsReason(result, "rounded down to zero");
+      assertContainsReason(result, "current positions match computed targets");
     }
   },
   {

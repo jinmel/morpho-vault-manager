@@ -17,6 +17,7 @@ import {
   listCronJobs,
   listTelegramGroups,
   runCronJobNow,
+  setEnvVar,
   upsertCronJob
 } from "../lib/openclaw.js";
 import { runPreflightChecks } from "../lib/preflight.js";
@@ -909,7 +910,24 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
   while (true) {
     const probe = await resolveApiToken(tokenSource);
     if (probe.ok) {
-      await p.note(`Token source ${probe.description} resolved successfully.`, "Token Verified");
+      const envResult = await setEnvVar(settings, tokenEnvVar, probe.value);
+      if (envResult.ok) {
+        await p.note(
+          `Token source ${probe.description} resolved and written to openclaw.json (env.vars.${tokenEnvVar}).`,
+          "Token Verified"
+        );
+      } else {
+        await p.note(
+          [
+            `Token source ${probe.description} resolved successfully.`,
+            "",
+            `Warning: failed to write env var to openclaw.json: ${envResult.stderr || "unknown error"}`,
+            `The cron agent may not be able to access the token. Set it manually:`,
+            `  openclaw config set env.vars.${tokenEnvVar} <token-value>`
+          ].join("\n"),
+          "Token Verified (env injection failed)"
+        );
+      }
       break;
     }
 

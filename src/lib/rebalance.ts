@@ -582,7 +582,7 @@ export async function runPlan(
   }
 
   if (actions.length === 0 && reasons.length === 0 && blockers.length === 0) {
-    reasons.push("The computed action set rounded down to zero after turnover and minimum-size checks.");
+    reasons.push("No allocation changes needed — current positions match computed targets.");
   }
 
   await logger.event("plan", "Computed target allocation", {
