@@ -981,6 +981,43 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
       );
     }
   },
+  {
+    id: "CFG-010",
+    description: "Canonical name collision: existing wallet with canonical name → suffixed create",
+    async run() {
+      const settings = makeTempSettings();
+      const calls: FakeCall[] = [];
+      const listStdout = [
+        "morpho-vault-manager  deadbeef-dead-dead-dead-deadbeefdead",
+        "  eip155:1     0x2222222222222222222222222222222222222222"
+      ].join("\n");
+      const deps = fakeOwsDeps(({ args }) => {
+        if (args[0] === "wallet" && args[1] === "list") {
+          return { stdout: listStdout, stderr: "", code: 0 };
+        }
+        if (args[0] === "wallet" && args[1] === "create") {
+          return { stdout: FIXTURE_WALLET_CREATE_STDOUT, stderr: "", code: 0 };
+        }
+        return { stdout: "", stderr: "unexpected", code: 1 };
+      }, calls);
+
+      const resolution = await resolveOrCreateWallet(
+        settings,
+        { profileId: "default" },
+        deps
+      );
+
+      assertEqual("source", resolution.source, "auto-created");
+      const createCall = calls.find((c) => c.args[0] === "wallet" && c.args[1] === "create");
+      if (!createCall) throw new Error("expected a wallet create call");
+      const nameFlag = createCall.args[createCall.args.indexOf("--name") + 1];
+      assertTrue(
+        "name is suffixed",
+        nameFlag.startsWith("morpho-vault-manager-") && nameFlag !== "morpho-vault-manager",
+        `got ${nameFlag}`
+      );
+    }
+  }
 ];
 
 function resolvePreflightSettings(inheritPath: boolean): ReturnType<typeof makeTempSettings> {
