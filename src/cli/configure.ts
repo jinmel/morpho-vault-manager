@@ -3,8 +3,6 @@ import * as p from "@clack/prompts";
 import { getAddress, isAddress } from "viem";
 import {
   BASE_USDC_ADDRESS,
-  MORPHO_MCP_SERVER_NAME,
-  MORPHO_MCP_URL,
   RISK_PRESETS
 } from "../lib/constants.js";
 import { ensureDir, readTextFile, writeTextFile } from "../lib/fs.js";
@@ -15,13 +13,12 @@ import {
   enableCronJob,
   ensureAgent,
   listCronJobs,
-  mcpSetHttpServer,
-  mcpShowServer,
   runCronJobNow,
   upsertCronJob
 } from "../lib/openclaw.js";
 import { writePolicyArtifacts } from "../lib/policy.js";
 import { runPreflightChecks } from "../lib/preflight.js";
+import { commandExists } from "../lib/shell.js";
 import { runRebalance, type RebalanceRunResult } from "../lib/rebalance.js";
 import { buildApiKeyCreateCommand, buildWalletCreateCommand, runOwsPolicyCreate } from "../lib/ows.js";
 import { loadProfile, saveProfile } from "../lib/profile.js";
@@ -140,11 +137,56 @@ export function workspaceDirForAgent(settings: VaultManagerSettings, agentId: st
 
 async function preflight(settings: VaultManagerSettings): Promise<void> {
   const result = await runPreflightChecks(settings);
+  const owsIssue = result.issues.find((issue) => issue.code === "missing_ows");
   const gatewayIssue = result.issues.find((issue) => issue.code === "openclaw_gateway_unreachable");
-  const hardIssues = result.issues.filter((issue) => issue.code !== "openclaw_gateway_unreachable");
+  const hardIssues = result.issues.filter(
+    (issue) => issue.code !== "openclaw_gateway_unreachable" && issue.code !== "missing_ows"
+  );
 
   if (hardIssues.length > 0) {
     fail(hardIssues.map((issue) => issue.message).join("\n"));
+  }
+
+  if (owsIssue) {
+    await p.note(
+      [
+        owsIssue.message,
+        "",
+        "OWS (Open Wallet SDK) is required for wallet creation, transaction signing, and policy management.",
+        "",
+        "Install with:",
+        "  curl -fsSL https://docs.openwallet.sh/install.sh | bash",
+        "",
+        "After installing, verify with:",
+        `  ${settings.owsCommand} --version`,
+        "",
+        "Full docs: https://docs.openwallet.sh/"
+      ].join("\n"),
+      "OWS Not Found"
+    );
+
+    while (true) {
+      const retry = requiredBoolean(
+        await p.confirm({
+          message: "Have you installed OWS? Retry the check?",
+          initialValue: false
+        }),
+        "OWS install confirmation"
+      );
+
+      if (!retry) {
+        fail("Install OWS before running configure. See https://docs.openwallet.sh/");
+      }
+
+      if (await commandExists(settings.owsCommand)) {
+        break;
+      }
+
+      await p.note(
+        `${settings.owsCommand} is still not found in PATH.`,
+        "OWS Still Missing"
+      );
+    }
   }
 
   if (gatewayIssue) {
@@ -176,86 +218,6 @@ async function preflight(settings: VaultManagerSettings): Promise<void> {
       fail("Start the OpenClaw gateway daemon, then rerun configure.");
     }
   }
-}
-
-type MorphoMcpOutcome = "installed" | "existing" | "skipped" | "failed";
-
-async function promptMorphoMcpInstall(
-  settings: VaultManagerSettings
-): Promise<MorphoMcpOutcome> {
-  const existing = await mcpShowServer(settings, MORPHO_MCP_SERVER_NAME);
-  const payloadPreview = JSON.stringify({ url: MORPHO_MCP_URL });
-  const manualCommand = `${settings.openclawCommand} mcp set ${MORPHO_MCP_SERVER_NAME} '${payloadPreview}'`;
-
-  if (existing.exists) {
-    await p.note(
-      [
-        `An MCP server named "${MORPHO_MCP_SERVER_NAME}" is already registered in OpenClaw config.`,
-        "Leaving it as-is so operator edits are not overwritten.",
-        "",
-        "To reset to the default hosted endpoint:",
-        `  ${settings.openclawCommand} mcp unset ${MORPHO_MCP_SERVER_NAME}`,
-        `  ${manualCommand}`
-      ].join("\n"),
-      "Morpho MCP"
-    );
-    return "existing";
-  }
-
-  await p.note(
-    [
-      `Register the hosted Morpho MCP server (${MORPHO_MCP_URL}) in OpenClaw config.`,
-      "Once registered, every OpenClaw chat on this gateway can call Morpho query and prepare tools",
-      "via natural language (e.g. \"show me my morpho vault position\").",
-      "",
-      "Security note: the Morpho MCP server exposes prepare_* write tools alongside reads.",
-      "Those tools only return unsigned transactions — signing still has to pass through OWS policy —",
-      "but they bypass this plugin's own read → prepare → simulate → policy → sign → verify pipeline.",
-      "The periodic rebalance agent is unaffected; this only widens the surface for free-form chats.",
-      "",
-      "Skip this step if you prefer to manage MCP registration manually."
-    ].join("\n"),
-    "Morpho MCP"
-  );
-
-  const install = requiredBoolean(
-    await p.confirm({
-      message: "Register the morpho MCP server in OpenClaw config now?",
-      initialValue: true
-    }),
-    "morpho mcp install confirmation"
-  );
-
-  if (!install) {
-    return "skipped";
-  }
-
-  const spinner = p.spinner();
-  spinner.start("Registering morpho MCP server");
-  const result = await mcpSetHttpServer({
-    settings,
-    name: MORPHO_MCP_SERVER_NAME,
-    url: MORPHO_MCP_URL
-  });
-  spinner.stop(result.ok ? "Registered morpho MCP server" : "Failed to register morpho MCP server");
-
-  if (!result.ok) {
-    await p.note(
-      [
-        "Automatic MCP registration failed.",
-        "",
-        "Run this manually once the gateway is reachable:",
-        `  ${manualCommand}`,
-        "",
-        "stderr:",
-        result.stderr || "(empty)"
-      ].join("\n"),
-      "Morpho MCP"
-    );
-    return "failed";
-  }
-
-  return "installed";
 }
 
 async function promptWallet(settings: VaultManagerSettings, existing?: VaultManagerProfile): Promise<{
@@ -668,8 +630,6 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
 
   await preflight(settings);
 
-  const mcpOutcome = await promptMorphoMcpInstall(settings);
-
   const wallet = await promptWallet(settings, existing.profile ?? undefined);
 
   const backedUp = requiredBoolean(await p.confirm({
@@ -909,8 +869,7 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
       `Schedule: ${describeCronSchedule(profile.cronExpression)}`,
       `Risk config: ${formatRiskPresetConfig(profile.riskPreset)}`,
       `Token source: ${tokenSourceDescription}`,
-      `Model: ${modelPreference ?? "(default OpenClaw routing)"}`,
-      `Morpho MCP: ${mcpOutcome}`
+      `Model: ${modelPreference ?? "(default OpenClaw routing)"}`
     ].join("\n"),
     "Configured"
   );

@@ -46,7 +46,12 @@ export async function runPreflightChecks(
   if (!owsPresent) {
     issues.push({
       code: "missing_ows",
-      message: `Missing required command: ${settings.owsCommand}`
+      message: `Missing required command: ${settings.owsCommand}`,
+      remediation: [
+        "Install OWS: curl -fsSL https://docs.openwallet.sh/install.sh | bash",
+        `Verify the installation with: ${settings.owsCommand} --version`,
+        "Rerun configure after OWS is installed."
+      ]
     });
   }
   if (!morphoCliPresent) {
