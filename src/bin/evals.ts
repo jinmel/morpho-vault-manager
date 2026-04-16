@@ -24,6 +24,7 @@ import type {
   MorphoVaultPosition
 } from "../lib/morpho.js";
 import { saveProfile } from "../lib/profile.js";
+import { parseOwsWalletCreateOutput } from "../lib/ows-bootstrap.js";
 import {
   runPlan,
   type PlanReadDeps,
@@ -709,7 +710,51 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
         describeTokenSource(inlineSource).startsWith("inline:")
       );
     }
-  }
+  },
+  {
+    id: "OBS-BOOT-PARSER-001",
+    description: "parseOwsWalletCreateOutput handles the happy path",
+    async run() {
+      const stdout = [
+        "Created wallet 3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff",
+        "  eip155:1     0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B    m/44'/60'/0'/0/0",
+        "  eip155:8453  0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B    m/44'/60'/0'/0/0",
+        "",
+        "Recovery phrase (write this down):",
+        "abandon ability able about above absent absorb abstract absurd abuse access accident",
+        ""
+      ].join("\n");
+      const parsed = parseOwsWalletCreateOutput(stdout);
+      if ("error" in parsed) throw new Error(`unexpected parse error: ${parsed.error}`);
+      assertEqual("walletRef", parsed.walletRef, "3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff");
+      assertEqual(
+        "walletAddress",
+        parsed.walletAddress,
+        "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+      );
+      assertEqual("mnemonic word count", parsed.mnemonic.split(/\s+/).length, 12);
+    }
+  },
+  {
+    id: "OBS-BOOT-PARSER-002",
+    description: "parseOwsWalletCreateOutput rejects missing mnemonic",
+    async run() {
+      const stdout = [
+        "Created wallet 3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff",
+        "  eip155:1     0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+      ].join("\n");
+      const parsed = parseOwsWalletCreateOutput(stdout);
+      assertTrue("returned error", "error" in parsed);
+    }
+  },
+  {
+    id: "OBS-BOOT-PARSER-003",
+    description: "parseOwsWalletCreateOutput rejects missing wallet id",
+    async run() {
+      const parsed = parseOwsWalletCreateOutput("nothing to parse");
+      assertTrue("returned error", "error" in parsed);
+    }
+  },
 ];
 
 function resolvePreflightSettings(inheritPath: boolean): ReturnType<typeof makeTempSettings> {
