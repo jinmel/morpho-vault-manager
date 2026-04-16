@@ -66,7 +66,11 @@ export async function upsertCronJob(params: {
     ...(params.profile.cronEnabled ? [] : params.profile.cronJobId ? ["--disable"] : ["--disabled"])
   ];
 
-  const result = await runCommand(params.settings.openclawCommand, [...baseArgs, "--json"]);
+  const isCreate = !params.profile.cronJobId;
+  const result = await runCommand(params.settings.openclawCommand, [
+    ...baseArgs,
+    ...(isCreate ? ["--json"] : [])
+  ]);
   const output = `${result.stdout}\n${result.stderr}`;
 
   let jobId: string | undefined;
