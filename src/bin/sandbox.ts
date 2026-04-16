@@ -92,12 +92,10 @@ async function makeSandboxProfile(
 
 function depsForScenario(scenario: SandboxArgs["scenario"]) {
   if (scenario === "no-op") {
+    // Zero idle and no positions — nothing to allocate.
     return makeFixturePlanDeps({
-      positions: [
-        { vaultAddress: FIXTURE_VAULT_A.address, vaultName: FIXTURE_VAULT_A.name, suppliedUsdc: "5000" },
-        { vaultAddress: FIXTURE_VAULT_B.address, vaultName: FIXTURE_VAULT_B.name, suppliedUsdc: "5000" }
-      ],
-      idleUsdc: "100"
+      positions: [],
+      idleUsdc: "0"
     });
   }
   if (scenario === "blocked") {

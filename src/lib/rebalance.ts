@@ -57,7 +57,6 @@ export type PlanResult = {
   metrics: {
     idleUsdc: string;
     totalManagedUsdc: string;
-    targetCashBufferUsdc: string;
     turnoverCapUsdc: string;
     totalPlannedTurnoverUsdc: string;
   };
@@ -152,10 +151,6 @@ function capBps(maxSingleVaultPct: number): bigint {
   return BigInt(Math.round(maxSingleVaultPct * 10_000));
 }
 
-function targetCashBuffer(totalManaged: bigint, preset: RiskPreset): bigint {
-  const configured = parseUnits(String(preset.cashBufferUsd), USDC_DECIMALS);
-  return configured > totalManaged ? totalManaged : configured;
-}
 
 function describePosition(position: MorphoVaultPosition): string {
   const amount = position.supplied?.value ?? "0";
@@ -359,10 +354,10 @@ function trimActions(actions: ActionDraft[]): ActionDraft[] {
   return actions.filter((action) => action.amount >= MIN_ACTION_USDC);
 }
 
-function capDepositsToAvailableCash(actions: ActionDraft[], currentIdle: bigint, targetIdle: bigint): ActionDraft[] {
+function capDepositsToAvailableCash(actions: ActionDraft[], currentIdle: bigint): ActionDraft[] {
   const withdraws = sum(actions.filter((action) => action.kind === "withdraw").map((action) => action.amount));
   const deposits = actions.filter((action) => action.kind === "deposit");
-  const available = currentIdle + withdraws > targetIdle ? currentIdle + withdraws - targetIdle : 0n;
+  const available = currentIdle + withdraws;
   const desiredDeposits = sum(deposits.map((action) => action.amount));
 
   if (desiredDeposits <= available) return actions;
@@ -544,9 +539,7 @@ export async function runPlan(
   const idleUsdc = toUsdcUnits(tokenBalance.balance.value);
   const currentManagedInVaults = sum([...currentAmounts.values()]);
   const totalManaged = idleUsdc + currentManagedInVaults;
-  const targetIdle = targetCashBuffer(totalManaged, profile.riskPreset);
-  const investable = totalManaged > targetIdle ? totalManaged - targetIdle : 0n;
-  const targetAmounts = allocateTargets(investable, selected, profile.riskPreset);
+  const targetAmounts = allocateTargets(totalManaged, selected, profile.riskPreset);
 
   const vaultNames = new Map<string, string>();
   for (const vault of liveVaults) vaultNames.set(vault.address, vault.name);
@@ -577,7 +570,7 @@ export async function runPlan(
       `Proposed turnover ${formatUsdc(plannedTurnoverUsdc)} USDC exceeds the configured cap of ${formatUsdc(turnoverCap)} USDC.`
     );
   }
-  actions = capDepositsToAvailableCash(actions, idleUsdc, targetIdle);
+  actions = capDepositsToAvailableCash(actions, idleUsdc);
 
   if (blockers.length === 0) {
     if (totalManaged === 0n) {
@@ -595,7 +588,6 @@ export async function runPlan(
   await logger.event("plan", "Computed target allocation", {
     totalManagedUsdc: formatUsdc(totalManaged),
     idleUsdc: formatUsdc(idleUsdc),
-    targetCashBufferUsdc: formatUsdc(targetIdle),
     topVaultSetChangedMaterially: topVaultSetChange.changed,
     nonUsdcVaultPositionCount: nonUsdcVaultRejections.length,
     marketPositionCount: positionsResponse.marketPositions.length,
@@ -631,7 +623,6 @@ export async function runPlan(
     metrics: {
       idleUsdc: formatUsdc(idleUsdc),
       totalManagedUsdc: formatUsdc(totalManaged),
-      targetCashBufferUsdc: formatUsdc(targetIdle),
       turnoverCapUsdc: formatUsdc(turnoverCap),
       totalPlannedTurnoverUsdc: formatUsdc(plannedTurnover(actions))
     },

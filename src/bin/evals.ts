@@ -289,7 +289,7 @@ const SCENARIOS: Scenario[] = [
   },
   {
     id: "REB-002",
-    description: "No-op when positions are near target allocation",
+    description: "No-op when all actions are below minimum size",
     profile: {
       riskProfile: "balanced"
     },
@@ -298,7 +298,7 @@ const SCENARIOS: Scenario[] = [
       { vaultAddress: VAULT_A.address, vaultName: VAULT_A.name, suppliedUsdc: "5000" },
       { vaultAddress: VAULT_B.address, vaultName: VAULT_B.name, suppliedUsdc: "5000" }
     ],
-    idleUsdc: "100",
+    idleUsdc: "0",
     expect(result) {
       assertEqual("status", result.status, "no_op");
       assertContainsReason(result, "rounded down to zero");

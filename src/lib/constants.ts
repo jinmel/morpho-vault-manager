@@ -14,7 +14,6 @@ export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
     maxSingleVaultPct: 0.6,
 
     maxTurnoverUsd: 5000,
-    cashBufferUsd: 250,
     minimumVaultTvlUsd: 5_000_000,
     rewardPreference: "ignore",
     scoreWeights: {
@@ -32,7 +31,6 @@ export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
     maxSingleVaultPct: 0.5,
 
     maxTurnoverUsd: 10_000,
-    cashBufferUsd: 100,
     minimumVaultTvlUsd: 2_500_000,
     rewardPreference: "neutral",
     scoreWeights: {
@@ -50,7 +48,6 @@ export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
     maxSingleVaultPct: 0.7,
 
     maxTurnoverUsd: 25_000,
-    cashBufferUsd: 50,
     minimumVaultTvlUsd: 1_000_000,
     rewardPreference: "include",
     scoreWeights: {

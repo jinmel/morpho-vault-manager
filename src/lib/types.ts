@@ -33,7 +33,7 @@ export type RiskPreset = {
   maxSingleVaultPct: number;
 
   maxTurnoverUsd: number;
-  cashBufferUsd: number;
+
   minimumVaultTvlUsd: number;
   rewardPreference: "ignore" | "neutral" | "include";
   scoreWeights: {
