@@ -55,18 +55,9 @@ OWS default policy behavior is left untouched. The plugin's enforcement point is
 
 If a future change allows calldata to reach OWS through any path other than Morpho prepare output, the trust model must be re-evaluated and documented before merge.
 
-## Morpho MCP Registration
+## Morpho Skill
 
-Configure optionally registers the hosted Morpho MCP server (`https://mcp.morpho.org`) into OpenClaw gateway-wide config under the name `morpho`. This is orthogonal to the rebalance runtime trust boundary but widens the free-form chat surface, so its trade-offs are part of the security model:
-
-- The MCP server exposes read tools (vaults, markets, positions, docs) and `prepare_*` tools that return unsigned transactions. The MCP endpoint cannot sign or broadcast.
-- Prepared transactions from the MCP server only become live writes if an operator signs them through OWS.
-- The periodic rebalance agent does not invoke the MCP server. It uses `morpho-cli` directly and runs under the narrow AGENTS.md contract. MCP registration does not change its execution path.
-- The MCP server bypasses the plugin's own `read → prepare → simulate → sign → verify` pipeline for any free-form chat that the operator may later run.
-- MCP registration is a user-gated confirmation step in configure and is idempotent: existing `morpho` entries are preserved, not overwritten.
-- To remove the MCP registration, run `openclaw mcp unset morpho`.
-
-Any future expansion of what the Morpho MCP server can do (e.g. server-side signing) must re-evaluate whether this plugin should continue registering it automatically.
+Morpho protocol interaction is provided via the `morpho-cli` workspace skill (from [`morpho-org/morpho-skills`](https://github.com/morpho-org/morpho-skills/)). The skill provides CLI-based query and prepare commands that return unsigned transactions. The rebalance runtime uses `morpho-cli` directly and runs under the narrow AGENTS.md contract.
 
 ## Logging Rules
 

@@ -12,6 +12,7 @@ import {
   disableCronJob,
   enableCronJob,
   ensureAgent,
+  installSkill,
   listCronJobs,
   runCronJobNow,
   upsertCronJob
@@ -821,6 +822,27 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     await writeTextFile(
       agentsMdPath,
       agentsMd.trimEnd() + "\n\n" + vaultManagerInstructions
+    );
+  }
+
+  const skillResult = await installSkill({
+    workspaceDir,
+    slug: "morpho-cli",
+    force: true
+  });
+
+  if (!skillResult.ok) {
+    await p.note(
+      [
+        "Failed to install the morpho-cli skill into the agent workspace.",
+        "",
+        "Install it manually:",
+        `  clawhub --workdir "${workspaceDir}" install morpho-cli`,
+        "",
+        "stderr:",
+        skillResult.stderr || "(empty)"
+      ].join("\n"),
+      "Morpho Skill"
     );
   }
 

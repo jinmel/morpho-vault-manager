@@ -3,7 +3,7 @@
   "project": "openclaw-vault-manager",
   "lastUpdated": "2026-04-16",
   "overallStatus": "ready_for_review",
-  "currentFocus": "remove_plugin_managed_ows_policy_enforcement",
+  "currentFocus": "morpho_skill_installed_mcp_removed",
   "currentPlan": {
     "id": "bootstrap-harness",
     "path": "docs/exec-plans/active/bootstrap-harness.md",
@@ -80,9 +80,9 @@
       "notes": "docs/openclaw-vault-manager-spec.md, ARCHITECTURE.md, and SECURITY.md now document the intentional out-of-process OWS API-key provisioning path and place status/pause/resume/run-now in Phase 1 to match shipped behavior."
     },
     {
-      "id": "morpho_mcp_registration",
+      "id": "morpho_skill_migration",
       "status": "completed",
-      "notes": "Configure flow now offers to register the hosted Morpho MCP server (https://mcp.morpho.org) into OpenClaw gateway-wide config via `openclaw mcp set morpho`. Step is idempotent (preserves existing `morpho` entries), user-gated, and fail-soft (prints the manual command if the set fails). Rebalance runtime is unchanged — it still uses morpho-cli directly. Security impact is documented in SECURITY.md §Morpho MCP Registration and the new flow step is documented in ARCHITECTURE.md §Configure."
+      "notes": "Removed MCP server registration from configure/teardown flows. Morpho interaction now provided via the morpho-cli workspace skill installed from morpho-org/morpho-skills plugin marketplace. ARCHITECTURE.md and SECURITY.md updated to reflect skill-based approach."
     },
     {
       "id": "runtime_gated_destinations",

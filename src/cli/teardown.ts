@@ -1,8 +1,7 @@
 import path from "node:path";
 import * as p from "@clack/prompts";
-import { MORPHO_MCP_SERVER_NAME } from "../lib/constants.js";
 import { pathExists, removeDir } from "../lib/fs.js";
-import { deleteAgent, deleteCronJob, mcpUnsetServer } from "../lib/openclaw.js";
+import { deleteAgent, deleteCronJob } from "../lib/openclaw.js";
 import { deleteProfileFile, listProfileIds, loadProfile } from "../lib/profile.js";
 import type { VaultManagerSettings } from "../lib/types.js";
 import { agentIdForProfile, workspaceDirForAgent } from "./configure.js";
@@ -15,7 +14,6 @@ type TeardownResult = {
   logsRemoved: boolean;
   runsRemoved: boolean;
   profileRemoved: boolean;
-  mcpRemoved: boolean;
   errors: string[];
 };
 
@@ -24,11 +22,10 @@ type TeardownOptions = {
   profileId: string;
   force?: boolean;
   keepLogs?: boolean;
-  skipMcpCheck?: boolean;
 };
 
 export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult> {
-  const { settings, profileId, force, keepLogs, skipMcpCheck } = opts;
+  const { settings, profileId, force, keepLogs } = opts;
 
   const result: TeardownResult = {
     profileId,
@@ -38,7 +35,6 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
     logsRemoved: false,
     runsRemoved: false,
     profileRemoved: false,
-    mcpRemoved: false,
     errors: []
   };
 
@@ -104,15 +100,6 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
 
   result.profileRemoved = await deleteProfileFile(settings, profileId);
 
-  if (!skipMcpCheck) {
-    const remaining = await listProfileIds(settings);
-    if (remaining.length === 0) {
-      const mcpResult = await mcpUnsetServer(settings, MORPHO_MCP_SERVER_NAME);
-      result.mcpRemoved = mcpResult.ok;
-      if (!mcpResult.ok) result.errors.push(`MCP unset failed: ${mcpResult.stderr}`);
-    }
-  }
-
   if (!force) {
     const summary = [
       `Cron job: ${cronJobId ? (result.cronDeleted ? "removed" : "FAILED") : "none"}`,
@@ -122,8 +109,7 @@ export async function runTeardown(opts: TeardownOptions): Promise<TeardownResult
         `Logs: ${result.logsRemoved ? "removed" : "FAILED"}`,
         `Runs: ${result.runsRemoved ? "removed" : "FAILED"}`
       ]),
-      `Profile: ${result.profileRemoved ? "removed" : "FAILED"}`,
-      ...(result.mcpRemoved ? ["MCP server: removed (no profiles remain)"] : [])
+      `Profile: ${result.profileRemoved ? "removed" : "FAILED"}`
     ];
 
     await p.note(summary.join("\n"), "Teardown complete");
@@ -157,18 +143,8 @@ export async function runTeardownAll(
   const results: TeardownResult[] = [];
   for (const profileId of profileIds) {
     results.push(
-      await runTeardown({ settings, profileId, force: true, keepLogs, skipMcpCheck: true })
+      await runTeardown({ settings, profileId, force: true, keepLogs })
     );
-  }
-
-  const remaining = await listProfileIds(settings);
-  if (remaining.length === 0) {
-    const mcpResult = await mcpUnsetServer(settings, MORPHO_MCP_SERVER_NAME);
-    if (!mcpResult.ok) {
-      p.log.warn(`Failed to remove MCP server: ${mcpResult.stderr}`);
-    } else {
-      p.log.info("Removed shared Morpho MCP server (no profiles remain).");
-    }
   }
 
   const allErrors = results.flatMap((r) => r.errors.map((e) => `[${r.profileId}] ${e}`));

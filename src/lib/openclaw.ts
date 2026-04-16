@@ -113,47 +113,6 @@ export async function runCronJobNow(settings: VaultManagerSettings, cronJobId: s
   return result.stdout.trim() || result.stderr.trim();
 }
 
-export type McpServerProbe = {
-  exists: boolean;
-  raw?: string;
-};
-
-export async function mcpShowServer(
-  settings: VaultManagerSettings,
-  name: string
-): Promise<McpServerProbe> {
-  const result = await runCommand(settings.openclawCommand, ["mcp", "show", name]);
-  if (result.code === 0) {
-    return { exists: true, raw: result.stdout.trim() };
-  }
-  return { exists: false };
-}
-
-export type McpSetResult = {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-};
-
-export async function mcpSetHttpServer(params: {
-  settings: VaultManagerSettings;
-  name: string;
-  url: string;
-}): Promise<McpSetResult> {
-  const payload = JSON.stringify({ url: params.url });
-  const result = await runCommand(params.settings.openclawCommand, [
-    "mcp",
-    "set",
-    params.name,
-    payload
-  ]);
-  return {
-    ok: result.code === 0,
-    stdout: result.stdout.trim(),
-    stderr: result.stderr.trim()
-  };
-}
-
 export async function deleteCronJob(
   settings: VaultManagerSettings,
   cronJobId: string
@@ -180,17 +139,23 @@ export async function deleteAgent(
   return { ok: notFound, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
 }
 
-export async function mcpUnsetServer(
-  settings: VaultManagerSettings,
-  name: string
-): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  const result = await runCommand(settings.openclawCommand, ["mcp", "unset", name]);
-  if (result.code === 0) {
-    return { ok: true, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
-  }
-  const output = `${result.stdout}\n${result.stderr}`;
-  const notFound = /not found|does not exist|no such/i.test(output);
-  return { ok: notFound, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+export async function installSkill(params: {
+  workspaceDir: string;
+  slug: string;
+  force?: boolean;
+}): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  const result = await runCommand("clawhub", [
+    "--workdir",
+    params.workspaceDir,
+    "install",
+    params.slug,
+    ...(params.force ? ["--force"] : [])
+  ]);
+  return {
+    ok: result.code === 0,
+    stdout: result.stdout.trim(),
+    stderr: result.stderr.trim()
+  };
 }
 
 export async function listCronJobs(settings: VaultManagerSettings): Promise<unknown[] | null> {

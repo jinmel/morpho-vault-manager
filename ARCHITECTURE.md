@@ -69,7 +69,7 @@ Responsibilities:
 - prepare unsigned transactions
 - simulate transactions before execution
 
-The rebalance runtime uses `morpho-cli` directly. The plugin's configure flow additionally registers the hosted Morpho MCP server (`https://mcp.morpho.org`) with OpenClaw so that free-form agent chats can discover Morpho query and prepare tools by name. MCP registration is gateway-scoped config, not a runtime dependency: rebalance runs continue to work if the MCP entry is absent or unreachable.
+The rebalance runtime uses `morpho-cli` directly. Morpho skill content is installed as a workspace skill from [`morpho-org/morpho-skills`](https://github.com/morpho-org/morpho-skills/) so agents have Morpho-specific operating instructions available via the skill system.
 
 ## End-to-End Flow
 
@@ -77,9 +77,8 @@ The rebalance runtime uses `morpho-cli` directly. The plugin's configure flow ad
 
 1. User runs `openclaw vault-manager configure`.
 2. Plugin checks for required tools and daemon assumptions.
-3. Plugin offers to register the hosted Morpho MCP server (`https://mcp.morpho.org`) into gateway-wide OpenClaw config via `openclaw mcp set morpho '{"url":"..."}'`. Idempotent: if a `morpho` MCP entry already exists, the plugin leaves it untouched and surfaces the manual reset command.
-4. Plugin creates or imports an OWS wallet.
-5. Plugin emits OWS API-key provisioning instructions, and the operator completes token creation out-of-process so the raw token never enters plugin process memory.
+3. Plugin creates or imports an OWS wallet.
+4. Plugin emits OWS API-key provisioning instructions, and the operator completes token creation out-of-process so the raw token never enters plugin process memory.
 6. Plugin records the risk profile.
 7. Plugin offers funding guidance and an optional "continue once funded" balance poll against Morpho token reads.
 8. Plugin offers optional model-routing preference for the dedicated agent.

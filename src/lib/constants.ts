@@ -5,9 +5,6 @@ export const BASE_CHAIN_ID = "eip155:8453";
 export const USDC_DECIMALS = 6;
 export const MIN_ACTION_USDC = 1n * 10n ** 6n;
 
-export const MORPHO_MCP_SERVER_NAME = "morpho";
-export const MORPHO_MCP_URL = "https://mcp.morpho.org";
-
 export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
   conservative: {
     id: "conservative",
