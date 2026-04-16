@@ -12,6 +12,7 @@ import {
   disableCronJob,
   enableCronJob,
   ensureAgent,
+  getDefaultModel,
   installSkill,
   listConfiguredTelegramAccounts,
   listCronJobs,
@@ -716,7 +717,10 @@ async function promptFundingGuidance(
   }
 }
 
-async function promptModelSelection(existing?: string): Promise<string | undefined> {
+async function promptModelSelection(
+  settings: VaultManagerSettings,
+  existing?: string
+): Promise<{ modelPreference?: string; inheritedModelSnapshot?: string; inheritedModelSnapshotAt?: string }> {
   const choice = requiredString(
     await p.select({
       message: "Model selection for the vault-manager agent",
@@ -737,7 +741,14 @@ async function promptModelSelection(existing?: string): Promise<string | undefin
     "model selection"
   );
 
-  if (choice === "inherit") return undefined;
+  if (choice === "inherit") {
+    const snapshot = await getDefaultModel(settings);
+    return {
+      modelPreference: undefined,
+      inheritedModelSnapshot: snapshot,
+      inheritedModelSnapshotAt: snapshot ? new Date().toISOString() : undefined
+    };
+  }
 
   const value = optionalString(
     await p.text({
@@ -747,7 +758,8 @@ async function promptModelSelection(existing?: string): Promise<string | undefin
     })
   );
 
-  return value.length > 0 ? value : undefined;
+  const modelPreference = value.length > 0 ? value : undefined;
+  return { modelPreference };
 }
 
 async function promptCronSchedule(
@@ -833,7 +845,8 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     "Risk Config"
   );
 
-  const modelPreference = await promptModelSelection(existing.profile?.modelPreference);
+  const modelSelection = await promptModelSelection(settings, existing.profile?.modelPreference);
+  const { modelPreference, inheritedModelSnapshot, inheritedModelSnapshotAt } = modelSelection;
   const delivery = await promptCronDelivery(settings, existing.profile ?? undefined);
 
   const cronExpression = await promptCronSchedule(settings, existing.profile?.cronExpression, settings.defaultCron);
@@ -975,6 +988,8 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     updatedAt: new Date().toISOString(),
     riskPreset,
     modelPreference,
+    inheritedModelSnapshot,
+    inheritedModelSnapshotAt,
 
     lastFundedCheckAt: fundingProbe?.checkedAt ?? existing.profile?.lastFundedCheckAt,
     lastFundedUsdc: fundingProbe?.balance ?? existing.profile?.lastFundedUsdc,
@@ -1049,7 +1064,7 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
       `Delivery: ${describeDeliveryTarget(profile)}`,
       `Risk config: ${formatRiskPresetConfig(profile.riskPreset)}`,
       `Token source: ${tokenSourceDescription}`,
-      `Model: ${modelPreference ?? "(default OpenClaw routing)"}`
+      `Model: ${modelPreference ?? (inheritedModelSnapshot ? `(default OpenClaw routing, currently ${inheritedModelSnapshot})` : "(default OpenClaw routing)")}`
     ].join("\n"),
     "Configured"
   );
@@ -1107,6 +1122,8 @@ export async function showStatus(settings: VaultManagerSettings, profileId: stri
     tokenReadyError: tokenProbe.ok ? null : tokenProbe.error,
     agentId: profile.agentId,
     modelPreference: profile.modelPreference ?? null,
+    inheritedModelSnapshot: profile.inheritedModelSnapshot ?? null,
+    inheritedModelSnapshotAt: profile.inheritedModelSnapshotAt ?? null,
     workspaceDir: profile.workspaceDir,
     cronJobId: profile.cronJobId,
     cronExpression: profile.cronExpression,
@@ -1146,7 +1163,7 @@ export async function showStatus(settings: VaultManagerSettings, profileId: stri
       `Risk config: ${formatRiskPresetConfig(summary.riskPreset)}`,
       `Token source: ${summary.tokenSource} (${summary.tokenReady ? "ready" : `unavailable: ${summary.tokenReadyError}`})`,
       `Agent: ${summary.agentId}`,
-      `Model: ${summary.modelPreference ?? "(default routing)"}`,
+      `Model: ${summary.modelPreference ?? (summary.inheritedModelSnapshot ? `(default routing, was ${summary.inheritedModelSnapshot} at ${summary.inheritedModelSnapshotAt})` : "(default routing)")}`,
       `Workspace: ${summary.workspaceDir}`,
       `Cron job: ${summary.cronJobId ?? "missing"} (${summary.cronKnownToGateway ? "known" : "not found"})`,
       `Cron enabled: ${summary.cronEnabled ? "yes" : "no"}`,

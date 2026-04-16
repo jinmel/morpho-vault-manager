@@ -70,6 +70,8 @@ export type VaultManagerProfile = {
   notes?: string;
   riskPreset: RiskPreset;
   modelPreference?: string;
+  inheritedModelSnapshot?: string;
+  inheritedModelSnapshotAt?: string;
 
   lastFundedCheckAt?: string;
   lastFundedUsdc?: string;

@@ -3,7 +3,7 @@
   "project": "openclaw-vault-manager",
   "lastUpdated": "2026-04-16",
   "overallStatus": "ready_for_review",
-  "currentFocus": "cron_delivery_targets",
+  "currentFocus": "all_next_actions_resolved",
   "currentPlan": {
     "id": "bootstrap-harness",
     "path": "docs/exec-plans/active/bootstrap-harness.md",
@@ -93,6 +93,16 @@
       "id": "ows_default_policy_mode",
       "status": "completed",
       "notes": "Removed plugin-managed OWS policy artifacts and API-key policy attachment. Configure now emits a plain OWS API-key command, profiles no longer store policy ids/files, teardown no longer references policy cleanup, and SECURITY/ARCHITECTURE/spec/evals now describe OWS default policy behavior with runtime enforcement in the plugin."
+    },
+    {
+      "id": "snapshot_inherited_model_preference",
+      "status": "completed",
+      "notes": "Configure now resolves the active OpenClaw default model via openclaw config get model when the operator picks inherit, and snapshots it onto the profile as inheritedModelSnapshot + inheritedModelSnapshotAt. Status display shows the snapshot alongside the default routing label."
+    },
+    {
+      "id": "next_actions_audit_cleanup",
+      "status": "completed",
+      "notes": "Audited all five spec-audit nextActions from 2026-04-15. guard_market_positions was already implemented at rebalance.ts:196-200. stop_on_first_simulation_failure is enforced by agent instructions in template.ts:40,55 (execution is agent-driven, not in-process). reconcile_phase1_scope_statement was already resolved in the spec. document_manual_ows_api_key_provisioning was already documented. All five cleared."
     }
   ],
   "checks": [
@@ -231,54 +241,5 @@
       ]
     }
   ],
-  "nextActions": [
-    {
-      "id": "guard_market_positions",
-      "severity": "medium",
-      "origin": "spec-audit 2026-04-15",
-      "details": [
-        "src/lib/rebalance.ts only iterates vaultPositions; marketPositions from Morpho reads are silently dropped.",
-        "Spec §Agent Behavior Contract narrows the product to USDC vault positions only.",
-        "Add an explicit assertion or structured warning if marketPositions is non-empty so the narrow-by-design invariant is enforced, not implicit."
-      ]
-    },
-    {
-      "id": "document_manual_ows_api_key_provisioning",
-      "severity": "medium",
-      "origin": "spec-audit 2026-04-15",
-      "details": [
-        "src/cli/configure.ts prints an `ows api-key create` command for the operator to run instead of executing it, to avoid pulling the token into plugin process memory.",
-        "Spec/install docs now document the manual provisioning trade-off and the env/file-backed secret handoff.",
-        "Keep the operator-run command model unless a future implementation can provision and store the token without exposing it to plugin process memory."
-      ]
-    },
-    {
-      "id": "stop_on_first_simulation_failure",
-      "severity": "medium",
-      "origin": "spec-audit 2026-04-15",
-      "details": [
-        "src/lib/rebalance.ts records simulationOk=false and continues preparing subsequent actions in the same run.",
-        "Spec §Execution Path says the run should stop and report failure with no fallback heuristics.",
-        "Short-circuit the action loop on the first prepare/simulation failure and emit a single structured error in the run receipt + JSONL log."
-      ]
-    },
-    {
-      "id": "reconcile_phase1_scope_statement",
-      "severity": "low",
-      "origin": "spec-audit 2026-04-15",
-      "details": [
-        "pause/resume/run-now are fully implemented in src/cli/register.ts but spec §Rollout Phases still labels them Phase 2.",
-        "Update docs/openclaw-vault-manager-spec.md §Rollout Phases to move these into Phase 1 so the shipping spec matches what the plugin actually delivers."
-      ]
-    },
-    {
-      "id": "snapshot_inherited_model_preference",
-      "severity": "low",
-      "origin": "spec-audit 2026-04-15",
-      "details": [
-        "src/cli/configure.ts stores modelPreference=undefined when the operator picks 'inherit', so the profile is not a complete audit trail of what model actually ran.",
-        "Resolve the active OpenClaw default at configure time (via `openclaw config get` or equivalent) and snapshot it onto the profile alongside an `inheritedAt` timestamp."
-      ]
-    }
-  ]
+  "nextActions": []
 }

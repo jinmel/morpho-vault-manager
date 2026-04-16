@@ -95,6 +95,15 @@ export function buildCronDeliveryArgs(profile: VaultManagerProfile, settings: Va
   ];
 }
 
+export async function getDefaultModel(
+  settings: VaultManagerSettings
+): Promise<string | undefined> {
+  const result = await runCommand(settings.openclawCommand, ["config", "get", "model"]);
+  if (result.code !== 0) return undefined;
+  const value = result.stdout.trim();
+  return value.length > 0 ? value : undefined;
+}
+
 export async function setEnvVar(
   settings: VaultManagerSettings,
   name: string,
