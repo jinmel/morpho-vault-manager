@@ -365,6 +365,29 @@ function allocateTargets(total: bigint, candidates: RankedCandidate[], preset: R
     });
   }
 
+  const minPosition = parseUnits(String(preset.minimumPositionUsd), USDC_DECIMALS);
+  let belowMinimum = true;
+  while (belowMinimum) {
+    belowMinimum = false;
+    for (const [address, amount] of targets) {
+      if (amount > 0n && amount < minPosition) {
+        targets.delete(address);
+        belowMinimum = true;
+      }
+    }
+    if (belowMinimum && targets.size > 0) {
+      const kept = [...targets.entries()];
+      const keptTotal = sum(kept.map(([, v]) => v));
+      const surplus = total - keptTotal;
+      if (surplus > 0n) {
+        const keptWeightTotal = sum(kept.map(([, v]) => v));
+        for (const [addr, val] of kept) {
+          targets.set(addr, val + scaleAmount(surplus, val, keptWeightTotal));
+        }
+      }
+    }
+  }
+
   return targets;
 }
 

@@ -27,6 +27,7 @@ Manage the configured wallet as a constrained Morpho vault allocator on Base. Th
 - Max vaults: ${preset.maxVaults}
 - Max concentration per vault: ${(preset.maxSingleVaultPct * 100).toFixed(1)}%
 - Rebalance drift threshold: ${(preset.rebalanceDriftPct * 100).toFixed(1)}%
+- Minimum position size: $${preset.minimumPositionUsd}
 - Max turnover per run: $${preset.maxTurnoverUsd.toLocaleString()}
 - Minimum candidate vault TVL: $${preset.minimumVaultTvlUsd.toLocaleString()}
 - Reward preference: ${preset.rewardPreference}

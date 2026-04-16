@@ -118,6 +118,11 @@
       "id": "agent_behavior_contract_alignment",
       "status": "completed",
       "notes": "AGENTS.md template now lists all spec-required no-op conditions (drift below threshold, simulation failure) and escalation cases (repeated run failures, explicit turnover cap). REB-004 eval implemented to verify stop-on-simulation-failure instructions in generated template. ARCHITECTURE.md updated with drift detection thresholds."
+    },
+    {
+      "id": "minimum_position_size",
+      "status": "completed",
+      "notes": "Added minimumPositionUsd to RiskPreset (conservative: $100, balanced: $50, aggressive: $25). allocateTargets in rebalance.ts now zeroes out positions below the minimum and redistributes their amounts to remaining vaults. Template documents the minimum position size."
     }
   ],
   "checks": [

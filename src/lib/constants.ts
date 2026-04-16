@@ -14,6 +14,7 @@ export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
 
     maxTurnoverUsd: 5000,
     rebalanceDriftPct: 0.10,
+    minimumPositionUsd: 100,
     minimumVaultTvlUsd: 5_000_000,
     rewardPreference: "ignore",
     scoreWeights: {
@@ -32,6 +33,7 @@ export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
 
     maxTurnoverUsd: 10_000,
     rebalanceDriftPct: 0.075,
+    minimumPositionUsd: 50,
     minimumVaultTvlUsd: 2_500_000,
     rewardPreference: "neutral",
     scoreWeights: {
@@ -50,6 +52,7 @@ export const RISK_PRESETS: Record<RiskPreset["id"], RiskPreset> = {
 
     maxTurnoverUsd: 25_000,
     rebalanceDriftPct: 0.05,
+    minimumPositionUsd: 25,
     minimumVaultTvlUsd: 1_000_000,
     rewardPreference: "include",
     scoreWeights: {
