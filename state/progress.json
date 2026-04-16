@@ -103,6 +103,16 @@
       "id": "next_actions_audit_cleanup",
       "status": "completed",
       "notes": "Audited all five spec-audit nextActions from 2026-04-15. guard_market_positions was already implemented at rebalance.ts:196-200. stop_on_first_simulation_failure is enforced by agent instructions in template.ts:40,55 (execution is agent-driven, not in-process). reconcile_phase1_scope_statement was already resolved in the spec. document_manual_ows_api_key_provisioning was already documented. All five cleared."
+    },
+    {
+      "id": "drift_rule_implementation",
+      "status": "completed",
+      "notes": "Added rebalanceDriftPct to RiskPreset type and all three risk presets (conservative: 10%, balanced: 7.5%, aggressive: 5%). rebalance.ts now computes max weight drift across all vaults and no-ops when drift is below the threshold unless the top vault set changed materially. Drift metrics (maxDriftPct, driftThresholdPct) are included in plan results and JSONL logs. AGENTS.md template now documents the drift threshold. REB-011 and REB-012 evals added."
+    },
+    {
+      "id": "configure_validation_dry_run",
+      "status": "completed",
+      "notes": "Configure flow now runs a validation dry-run (Step 8 from spec) after saving the profile. Shows plan status, drift, managed USDC, actions, and persists lastValidationRun onto the profile. Failures are non-blocking with guidance to retry manually."
     }
   ],
   "checks": [

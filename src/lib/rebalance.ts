@@ -59,6 +59,8 @@ export type PlanResult = {
     totalManagedUsdc: string;
     turnoverCapUsdc: string;
     totalPlannedTurnoverUsdc: string;
+    maxDriftPct: string;
+    driftThresholdPct: string;
   };
   vaults: {
     selected: Array<{
@@ -204,6 +206,26 @@ function collectUnsupportedPositionReasons(params: {
     nonUsdcVaultRejections,
     supportedVaultPositions
   };
+}
+
+function computeMaxDriftPct(
+  currentAmounts: Map<string, bigint>,
+  targetAmounts: Map<string, bigint>,
+  totalManaged: bigint
+): number {
+  if (totalManaged <= 0n) return 0;
+
+  const allAddresses = new Set([...currentAmounts.keys(), ...targetAmounts.keys()]);
+  let maxDrift = 0;
+
+  for (const address of allAddresses) {
+    const currentPct = Number(currentAmounts.get(address) ?? 0n) / Number(totalManaged);
+    const targetPct = Number(targetAmounts.get(address) ?? 0n) / Number(totalManaged);
+    const drift = Math.abs(currentPct - targetPct);
+    if (drift > maxDrift) maxDrift = drift;
+  }
+
+  return maxDrift;
 }
 
 function topVaultSetChangedMaterially(params: {
@@ -556,12 +578,23 @@ export async function runPlan(
     );
   }
 
+  const maxDrift = computeMaxDriftPct(currentAmounts, targetAmounts, totalManaged);
+  const driftThreshold = profile.riskPreset.rebalanceDriftPct;
+  const driftExceedsThreshold = maxDrift >= driftThreshold;
+
   let actions = buildActionDrafts({
     selected,
     currentAmounts,
     targetAmounts,
     vaultNames
   });
+
+  if (actions.length > 0 && !driftExceedsThreshold && !topVaultSetChange.changed) {
+    reasons.push(
+      `Max weight drift ${(maxDrift * 100).toFixed(2)}% is below the ${(driftThreshold * 100).toFixed(1)}% threshold.`
+    );
+    actions = [];
+  }
 
   const turnoverCap = parseUnits(String(profile.riskPreset.maxTurnoverUsd), USDC_DECIMALS);
   const plannedTurnoverUsdc = plannedTurnover(actions);
@@ -588,6 +621,9 @@ export async function runPlan(
   await logger.event("plan", "Computed target allocation", {
     totalManagedUsdc: formatUsdc(totalManaged),
     idleUsdc: formatUsdc(idleUsdc),
+    maxDriftPct: (maxDrift * 100).toFixed(2),
+    driftThresholdPct: (driftThreshold * 100).toFixed(1),
+    driftExceedsThreshold,
     topVaultSetChangedMaterially: topVaultSetChange.changed,
     nonUsdcVaultPositionCount: nonUsdcVaultRejections.length,
     marketPositionCount: positionsResponse.marketPositions.length,
@@ -624,7 +660,9 @@ export async function runPlan(
       idleUsdc: formatUsdc(idleUsdc),
       totalManagedUsdc: formatUsdc(totalManaged),
       turnoverCapUsdc: formatUsdc(turnoverCap),
-      totalPlannedTurnoverUsdc: formatUsdc(plannedTurnover(actions))
+      totalPlannedTurnoverUsdc: formatUsdc(plannedTurnover(actions)),
+      maxDriftPct: (maxDrift * 100).toFixed(2),
+      driftThresholdPct: (driftThreshold * 100).toFixed(1)
     },
     vaults: {
       selected: selected.map((vault) => ({

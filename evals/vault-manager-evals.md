@@ -27,6 +27,8 @@ These evals define the minimum deterministic behavior expected from the reposito
 | `REB-008` | Turnover cap blocks instead of clipping | Proposed action set exceeds configured turnover cap | Rebalance is blocked with an explicit turnover-cap reason | `scripts/check/evals --only=REB-008` |
 | `REB-009` | Non-vault Morpho market positions block execution | Wallet has a non-vault Morpho market position | Rebalance is blocked with an explicit non-vault-position reason | `scripts/check/evals --only=REB-009` |
 | `REB-010` | Material top vault set changes trigger a rebalance | Current managed vault set differs from the current top-ranked set but drift remains below threshold | Rebalance still plans the repositioning actions | `scripts/check/evals --only=REB-010` |
+| `REB-011` | Drift below threshold produces no-op | Positions slightly off target but drift below profile threshold | Rebalance returns no-op with drift-below-threshold reason | `scripts/check/evals --only=REB-011` |
+| `REB-012` | Drift above threshold triggers rebalance | Positions significantly off target with drift above profile threshold | Rebalance returns planned with actions | `scripts/check/evals --only=REB-012` |
 | `OBS-001` | Run logging is auditable | Any dry-run or live-run | Each run emits a JSONL log containing run id, phase transitions, final outcome, and no unredacted secrets | `scripts/check/evals --only=OBS-001` |
 
 ## Promotion Rule

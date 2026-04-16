@@ -34,6 +34,7 @@ export type RiskPreset = {
 
   maxTurnoverUsd: number;
 
+  rebalanceDriftPct: number;
   minimumVaultTvlUsd: number;
   rewardPreference: "ignore" | "neutral" | "include";
   scoreWeights: {

@@ -435,6 +435,41 @@ const SCENARIOS: Scenario[] = [
       );
       assertTrue("withdraw from changed top set", withdrewFromTopSetChange);
     }
+  },
+  {
+    id: "REB-011",
+    description: "Drift below threshold produces no-op",
+    profile: {
+      riskProfile: "balanced"
+    },
+    vaults: [VAULT_A, VAULT_B],
+    positions: [
+      { vaultAddress: VAULT_A.address, vaultName: VAULT_A.name, suppliedUsdc: "5200" },
+      { vaultAddress: VAULT_B.address, vaultName: VAULT_B.name, suppliedUsdc: "4800" }
+    ],
+    idleUsdc: "0",
+    expect(result) {
+      assertEqual("status", result.status, "no_op");
+      assertContainsReason(result, "below the");
+      assertContainsReason(result, "threshold");
+    }
+  },
+  {
+    id: "REB-012",
+    description: "Drift above threshold triggers rebalance",
+    profile: {
+      riskProfile: "aggressive"
+    },
+    vaults: [VAULT_A, VAULT_B],
+    positions: [
+      { vaultAddress: VAULT_A.address, vaultName: VAULT_A.name, suppliedUsdc: "8000" },
+      { vaultAddress: VAULT_B.address, vaultName: VAULT_B.name, suppliedUsdc: "2000" }
+    ],
+    idleUsdc: "0",
+    expect(result) {
+      assertEqual("status", result.status, "planned");
+      assertTrue("has actions", result.actions.length > 0);
+    }
   }
 ];
 

@@ -1069,6 +1069,60 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     "Configured"
   );
 
+  const runValidation = requiredBoolean(await p.confirm({
+    message: "Run a validation dry-run to verify the rebalance plan?",
+    initialValue: true
+  }), "validation run confirmation");
+
+  if (runValidation) {
+    const spinner = p.spinner();
+    spinner.start("Computing validation plan...");
+    try {
+      const planResult = await runPlan(settings, profileId);
+      spinner.stop("Validation plan computed.");
+
+      const lines = [
+        `Status: ${planResult.status}`,
+        `Drift: ${planResult.metrics.maxDriftPct}% (threshold: ${planResult.metrics.driftThresholdPct}%)`,
+        `Managed USDC: ${planResult.metrics.totalManagedUsdc}`,
+        `Idle USDC: ${planResult.metrics.idleUsdc}`,
+        `Actions: ${planResult.actions.length}`,
+        `Receipt: ${planResult.receiptPath}`
+      ];
+
+      if (planResult.reasons.length > 0) {
+        lines.push("", "Reasons:");
+        for (const reason of planResult.reasons) lines.push(`  - ${reason}`);
+      }
+      if (planResult.warnings.length > 0) {
+        lines.push("", "Warnings:");
+        for (const warning of planResult.warnings) lines.push(`  - ${warning}`);
+      }
+      if (planResult.actions.length > 0) {
+        lines.push("", "Planned actions:");
+        for (const action of planResult.actions) {
+          lines.push(`  - ${action.kind} ${action.amountUsdc} USDC → ${action.vaultName}`);
+        }
+      }
+
+      await p.note(lines.join("\n"), "Validation Dry-Run");
+
+      profile.lastValidationRun = {
+        runId: planResult.runId,
+        status: planResult.status,
+        receiptPath: planResult.receiptPath,
+        createdAt: planResult.createdAt
+      };
+      profilePath = await saveProfile(settings, profile);
+    } catch (error) {
+      spinner.stop("Validation plan failed.");
+      await p.note(
+        `Dry-run failed: ${error instanceof Error ? error.message : String(error)}\nThis does not affect your configuration — you can retry with:\n  openclaw vault-manager plan --profile ${profileId}`,
+        "Validation Error"
+      );
+    }
+  }
+
   await p.note(
     [
       "Your vault manager profile is ready.",
