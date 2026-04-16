@@ -93,10 +93,7 @@
           }
         ]
       },
-      "dryRunByDefault": {
-        "type": "boolean",
-        "description": "Whether live execution should remain opt-in."
-      }
+
     }
   }
 }

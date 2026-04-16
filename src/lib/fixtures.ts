@@ -2,12 +2,11 @@ import { getAddress } from "viem";
 import { BASE_USDC_ADDRESS } from "./constants.js";
 import type {
   MorphoPositionsResponse,
-  MorphoPreparedOperation,
   MorphoTokenBalanceResponse,
   MorphoVaultDetail,
   MorphoVaultPosition
 } from "./morpho.js";
-import type { RebalanceReadDeps } from "./rebalance.js";
+import type { PlanReadDeps } from "./rebalance.js";
 
 export type FixtureVault = {
   address: string;
@@ -113,65 +112,23 @@ export function fixtureTokenBalance(walletAddress: string, amount: string): Morp
   };
 }
 
-export function fixturePreparedOperation(params: {
-  kind: "deposit" | "withdraw";
-  vaultAddress: string;
-  amount: string;
-  succeed?: boolean;
-}): MorphoPreparedOperation {
-  const succeed = params.succeed ?? true;
-  return {
-    operation: params.kind === "deposit" ? "vault-supply" : "vault-withdraw",
-    chain: "base",
-    summary: `${params.kind} ${params.amount} USDC via ${params.vaultAddress}`,
-    transactions: [
-      {
-        to: getAddress(params.vaultAddress),
-        data: "0xdeadbeef",
-        value: "0",
-        chainId: "eip155:8453",
-        description: `${params.kind} ${params.amount} USDC`
-      }
-    ],
-    simulated: true,
-    simulationOk: succeed,
-    warnings: succeed ? [] : [{ level: "error", message: "Simulation failed (fixture)." }]
-  };
-}
-
 export type FixtureSandboxInputs = {
   walletAddress?: string;
   vaults?: FixtureVault[];
   positions?: FixturePosition[];
   idleUsdc?: string;
-  simulationFails?: boolean;
 };
 
-export function makeFixtureRebalanceDeps(inputs: FixtureSandboxInputs = {}): RebalanceReadDeps {
+export function makeFixturePlanDeps(inputs: FixtureSandboxInputs = {}): PlanReadDeps {
   const walletAddress = inputs.walletAddress ?? FIXTURE_WALLET;
   const vaults = inputs.vaults ?? [FIXTURE_VAULT_A, FIXTURE_VAULT_B];
   const positions = inputs.positions ?? [];
   const idleUsdc = inputs.idleUsdc ?? "5000";
-  const simulationFails = inputs.simulationFails ?? false;
   const vaultDetails = vaults.map(fixtureVaultDetail);
 
   return {
     queryVaults: async () => vaultDetails,
     getPositions: async () => fixturePositionsResponse(walletAddress, positions),
-    getTokenBalance: async () => fixtureTokenBalance(walletAddress, idleUsdc),
-    prepareDeposit: async (vaultAddress, _walletAddress, amount) =>
-      fixturePreparedOperation({
-        kind: "deposit",
-        vaultAddress,
-        amount,
-        succeed: !simulationFails
-      }),
-    prepareWithdraw: async (vaultAddress, _walletAddress, amount) =>
-      fixturePreparedOperation({
-        kind: "withdraw",
-        vaultAddress,
-        amount,
-        succeed: !simulationFails
-      })
+    getTokenBalance: async () => fixtureTokenBalance(walletAddress, idleUsdc)
   };
 }

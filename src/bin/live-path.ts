@@ -14,7 +14,7 @@ import {
 import { openclawGatewayIsReachable } from "../lib/openclaw.js";
 import { runPreflightChecks } from "../lib/preflight.js";
 import { saveProfile } from "../lib/profile.js";
-import { runRebalance } from "../lib/rebalance.js";
+import { runPlan } from "../lib/rebalance.js";
 import { resolveVaultManagerSettings } from "../lib/settings.js";
 import { runCommand } from "../lib/shell.js";
 import type { VaultManagerProfile, VaultManagerSettings } from "../lib/types.js";
@@ -241,12 +241,12 @@ async function main(): Promise<void> {
       )
     );
 
-    let dryRunStatus = "";
+    let planStatus = "";
     steps.push(
-      await safeStep("dry-run-rebalance", "runRebalance dry-run against live Morpho", async () => {
+      await safeStep("plan-rebalance", "runPlan against live Morpho", async () => {
         const profile = await writeValidationProfile(settings, chosenVaults);
-        const result = await runRebalance(settings, profile.profileId, "dry-run");
-        dryRunStatus = result.status;
+        const result = await runPlan(settings, profile.profileId);
+        planStatus = result.status;
         const expectedStatuses = new Set(["no_op", "planned", "blocked"]);
         if (!expectedStatuses.has(result.status)) {
           throw new Error(`Unexpected status ${result.status}`);
@@ -255,29 +255,10 @@ async function main(): Promise<void> {
       })
     );
 
-    steps.push(
-      await safeStep("live-refusal", "live-run refuses without arming", async () => {
-        const cliResult = await runCommand("npx", [
-          "tsx",
-          path.resolve(new URL("./rebalance.ts", import.meta.url).pathname),
-          "live",
-          "--profile",
-          "live-path"
-        ]);
-        if (cliResult.code === 0) {
-          throw new Error("live runner did not refuse without --allow-live");
-        }
-        if (!/allow-live/i.test(`${cliResult.stdout}${cliResult.stderr}`)) {
-          throw new Error(`live refusal message missing --allow-live hint: ${cliResult.stderr}`);
-        }
-        return "refused as expected";
-      })
-    );
-
     const failed = steps.filter((step) => step.status === "fail");
     const report = {
       root,
-      dryRunStatus,
+      planStatus,
       totals: {
         pass: steps.length - failed.length,
         fail: failed.length

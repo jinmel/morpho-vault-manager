@@ -83,13 +83,12 @@ Morpho protocol interaction is provided via the `morpho-cli` workspace skill (fr
 
 ## Execution Guardrails
 
-- `scripts/rebalance/live-run` must refuse to execute unless an explicit arming control is present.
-- Configure flows should default to dry-run validation before first live execution.
-- All transaction execution wrappers must check:
-  - chain
-  - asset scope
-  - simulation result
-  - final receipt verification after broadcast
+- Configure flows should run a validation plan before completing onboarding.
+- Transaction preparation and execution is delegated to the agent using morpho-cli and OWS. The agent's AGENTS.md instructions enforce:
+  - Only morpho-cli-prepared transactions reach OWS signing (no agent-authored calldata).
+  - Simulation failure is terminal — the agent must stop on first failure.
+  - Chain (Base) and asset (USDC) scope are enforced by the plan command's scoring engine.
+  - The agent must report transaction hashes and verification details after each run.
 
 ## Review Checklist
 

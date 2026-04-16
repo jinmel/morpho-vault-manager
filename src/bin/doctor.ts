@@ -109,7 +109,7 @@ async function probeLivePath(rootDir: string): Promise<Probe> {
     const jsonStart = stdout.indexOf("{");
     const parsed = JSON.parse(stdout.slice(jsonStart)) as {
       totals?: { pass?: number; fail?: number };
-      dryRunStatus?: string;
+      planStatus?: string;
     };
     if (!parsed.totals || parsed.totals.fail && parsed.totals.fail > 0) {
       return {
@@ -121,7 +121,7 @@ async function probeLivePath(rootDir: string): Promise<Probe> {
     return {
       id: "live-path",
       status: "pass",
-      description: `end-to-end read path verified (dryRunStatus=${parsed.dryRunStatus ?? "n/a"})`
+      description: `end-to-end read path verified (planStatus=${parsed.planStatus ?? "n/a"})`
     };
   } catch (error) {
     return {
@@ -156,7 +156,7 @@ async function probeSandbox(rootDir: string): Promise<Probe> {
     return {
       id: "sandbox:planned",
       status: "pass",
-      description: "fixture sandbox produces a planned dry-run"
+      description: "fixture sandbox produces a planned allocation"
     };
   } catch (error) {
     return {

@@ -22,7 +22,7 @@ export type VaultManagerSettings = {
   defaultTokenSource: TokenSource;
   baseAgentId: string;
   baseCronName: string;
-  dryRunByDefault: boolean;
+
 };
 
 export type RiskPreset = {
@@ -70,7 +70,7 @@ export type VaultManagerProfile = {
   notes?: string;
   riskPreset: RiskPreset;
   modelPreference?: string;
-  armedForLiveExecution?: boolean;
+
   lastFundedCheckAt?: string;
   lastFundedUsdc?: string;
   lastValidationRun?: {

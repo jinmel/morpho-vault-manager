@@ -1,69 +1,35 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import {
-  createPublicClient,
-  formatUnits,
-  getAddress,
-  http,
-  parseSignature,
-  parseTransaction,
-  parseUnits,
-  serializeTransaction
-} from "viem";
-import type { Address, Hex, TransactionSerializableEIP1559 } from "viem";
-import { base } from "viem/chains";
+import { formatUnits, getAddress, parseUnits } from "viem";
 import { MIN_ACTION_USDC, USDC_DECIMALS } from "./constants.js";
 import { ensureDir, writeJsonFile } from "./fs.js";
 import {
   getMorphoPositions,
   getMorphoTokenBalance,
-  prepareMorphoDeposit,
-  prepareMorphoWithdraw,
   queryMorphoVaults,
   type MorphoPositionsResponse,
-  type MorphoPreparedOperation,
-  type MorphoPreparedWarning,
   type MorphoTokenBalanceResponse,
-  type MorphoUnsignedTransaction,
   type MorphoVaultDetail,
   type MorphoVaultPosition
 } from "./morpho.js";
-import { signTransactionWithOws } from "./ows.js";
 import { loadProfile } from "./profile.js";
-import { createRunLogger, runLogPathFor, type RunLogger } from "./run-logger.js";
-import { describeTokenSource, resolveApiToken } from "./secrets.js";
+import { createRunLogger, runLogPathFor } from "./run-logger.js";
 import type { RiskPreset, VaultManagerProfile, VaultManagerSettings } from "./types.js";
 
-export type RebalanceMode = "dry-run" | "live";
+export type PlanStatus = "no_op" | "planned" | "blocked";
 
-export type RebalanceStatus = "no_op" | "planned" | "executed" | "blocked";
-
-export type RebalanceReadDeps = {
+export type PlanReadDeps = {
   queryVaults: () => Promise<MorphoVaultDetail[]>;
   getPositions: (walletAddress: string) => Promise<MorphoPositionsResponse>;
   getTokenBalance: (walletAddress: string) => Promise<MorphoTokenBalanceResponse>;
-  prepareDeposit: (
-    vaultAddress: string,
-    walletAddress: string,
-    amount: string
-  ) => Promise<MorphoPreparedOperation>;
-  prepareWithdraw: (
-    vaultAddress: string,
-    walletAddress: string,
-    amount: string
-  ) => Promise<MorphoPreparedOperation>;
 };
 
-function defaultReadDeps(settings: VaultManagerSettings, profile: VaultManagerProfile): RebalanceReadDeps {
+function defaultReadDeps(settings: VaultManagerSettings, profile: VaultManagerProfile): PlanReadDeps {
   return {
     queryVaults: () => queryMorphoVaults(settings, profile.chain, "USDC"),
     getPositions: (walletAddress) => getMorphoPositions(settings, profile.chain, walletAddress),
     getTokenBalance: (walletAddress) =>
-      getMorphoTokenBalance(settings, profile.chain, profile.usdcAddress, walletAddress),
-    prepareDeposit: (vaultAddress, walletAddress, amount) =>
-      prepareMorphoDeposit(settings, profile.chain, vaultAddress, walletAddress, amount),
-    prepareWithdraw: (vaultAddress, walletAddress, amount) =>
-      prepareMorphoWithdraw(settings, profile.chain, vaultAddress, walletAddress, amount)
+      getMorphoTokenBalance(settings, profile.chain, profile.usdcAddress, walletAddress)
   };
 }
 
@@ -77,39 +43,15 @@ export type RebalanceAction = {
   clippedByTurnover: boolean;
 };
 
-export type RebalanceOperationResult = {
-  kind: "deposit" | "withdraw";
-  vaultAddress: string;
-  vaultName: string;
-  amountUsdc: string;
-  summary?: string;
-  simulationOk: boolean;
-  warnings: MorphoPreparedWarning[];
-  transactions: MorphoUnsignedTransaction[];
-  error?: string;
-};
-
-export type ExecutedTransactionReceipt = {
-  description: string;
-  hash: string;
-  status: "success";
-  gasUsed: string;
-  blockNumber: string;
-};
-
-export type RebalanceRunResult = {
+export type PlanResult = {
   runId: string;
-  mode: RebalanceMode;
-  status: RebalanceStatus;
+  status: PlanStatus;
   profileId: string;
   createdAt: string;
   receiptPath: string;
   logPath: string;
   walletAddress: string;
   riskProfile: VaultManagerProfile["riskProfile"];
-  tokenEnvVar: string;
-  tokenSource: string;
-  tokenReady: boolean;
   reasons: string[];
   warnings: string[];
   metrics: {
@@ -151,11 +93,6 @@ export type RebalanceRunResult = {
     targetPct: string;
   }>;
   actions: RebalanceAction[];
-  operations: RebalanceOperationResult[];
-  execution: {
-    rpcUrl?: string;
-    transactions: ExecutedTransactionReceipt[];
-  };
 };
 
 type CandidateVault = {
@@ -542,188 +479,6 @@ function buildActionDrafts(params: {
   return actions;
 }
 
-async function prepareActionOperations(
-  profile: VaultManagerProfile,
-  actions: ActionDraft[],
-  deps: RebalanceReadDeps
-): Promise<RebalanceOperationResult[]> {
-  const operations: RebalanceOperationResult[] = [];
-
-  for (const action of actions) {
-    const amountUsdc = formatUsdc(action.amount);
-
-    try {
-      const prepared =
-        action.kind === "deposit"
-          ? await deps.prepareDeposit(action.vaultAddress, profile.walletAddress, amountUsdc)
-          : await deps.prepareWithdraw(action.vaultAddress, profile.walletAddress, amountUsdc);
-
-      operations.push(toOperationResult(action, prepared));
-      if (!operations[operations.length - 1].simulationOk) {
-        break;
-      }
-    } catch (error) {
-      operations.push({
-        kind: action.kind,
-        vaultAddress: action.vaultAddress,
-        vaultName: action.vaultName,
-        amountUsdc,
-        simulationOk: false,
-        warnings: [],
-        transactions: [],
-        error: (error as Error).message
-      });
-      break;
-    }
-  }
-
-  return operations;
-}
-
-function toOperationResult(action: ActionDraft, prepared: MorphoPreparedOperation): RebalanceOperationResult {
-  return {
-    kind: action.kind,
-    vaultAddress: action.vaultAddress,
-    vaultName: action.vaultName,
-    amountUsdc: formatUsdc(action.amount),
-    summary: prepared.summary,
-    simulationOk: Boolean(prepared.simulationOk ?? prepared.simulated),
-    warnings: prepared.warnings ?? [],
-    transactions: prepared.transactions
-  };
-}
-
-function toSerializableTransaction(params: {
-  tx: MorphoUnsignedTransaction;
-  nonce: number;
-  gas: bigint;
-  maxFeePerGas: bigint;
-  maxPriorityFeePerGas: bigint;
-}): TransactionSerializableEIP1559 {
-  return {
-    type: "eip1559",
-    chainId: base.id,
-    nonce: params.nonce,
-    gas: params.gas,
-    maxFeePerGas: params.maxFeePerGas,
-    maxPriorityFeePerGas: params.maxPriorityFeePerGas,
-    to: getAddress(params.tx.to),
-    data: params.tx.data,
-    value: BigInt(params.tx.value || "0")
-  };
-}
-
-function resolveSignedTransaction(unsignedTransactionHex: Hex, payload: {
-  signature?: string;
-  signedTransaction?: string;
-}): Hex {
-  if (payload.signedTransaction) {
-    return payload.signedTransaction as Hex;
-  }
-
-  if (!payload.signature) {
-    throw new Error("OWS did not return a usable signature or signed transaction payload.");
-  }
-
-  const signature = parseSignature(payload.signature as Hex);
-  const parsedUnsigned = parseTransaction(unsignedTransactionHex) as TransactionSerializableEIP1559;
-  return serializeTransaction(parsedUnsigned, signature);
-}
-
-async function executeOperations(params: {
-  settings: VaultManagerSettings;
-  profile: VaultManagerProfile;
-  operations: RebalanceOperationResult[];
-  token: string;
-}): Promise<{ rpcUrl?: string; transactions: ExecutedTransactionReceipt[] }> {
-  const transport = params.settings.baseRpcUrl ? http(params.settings.baseRpcUrl) : http();
-  const publicClient = createPublicClient({
-    chain: base,
-    transport
-  });
-
-  const fees = await publicClient.estimateFeesPerGas({
-    chain: base,
-    type: "eip1559"
-  });
-
-  const maxPriorityFeePerGas =
-    fees.maxPriorityFeePerGas ?? fees.gasPrice ?? 1_000_000n;
-  const maxFeePerGas =
-    fees.maxFeePerGas ?? fees.gasPrice ?? maxPriorityFeePerGas;
-
-  let nonce = await publicClient.getTransactionCount({
-    address: getAddress(params.profile.walletAddress),
-    blockTag: "pending"
-  });
-
-  const receipts: ExecutedTransactionReceipt[] = [];
-
-  for (const operation of params.operations) {
-    for (const tx of operation.transactions) {
-      const account = getAddress(params.profile.walletAddress);
-      const gasEstimate = await publicClient.estimateGas({
-        account,
-        to: getAddress(tx.to),
-        data: tx.data,
-        value: BigInt(tx.value || "0"),
-        nonce
-      });
-
-      const serializable = toSerializableTransaction({
-        tx,
-        nonce,
-        gas: (gasEstimate * 12n) / 10n,
-        maxFeePerGas,
-        maxPriorityFeePerGas
-      });
-
-      const unsignedTransactionHex = serializeTransaction(serializable);
-      const signResult = await signTransactionWithOws({
-        settings: params.settings,
-        walletRef: params.profile.walletRef,
-        token: params.token,
-        chain: "base",
-        unsignedTransactionHex
-      });
-
-      if (!signResult.ok) {
-        throw new Error(signResult.error ?? "OWS signing failed.");
-      }
-
-      const signedTransaction = resolveSignedTransaction(unsignedTransactionHex, signResult.payload);
-      const transactionHash =
-        signResult.payload.transactionHash ??
-        (await publicClient.sendRawTransaction({
-          serializedTransaction: signedTransaction
-        }));
-
-      const receipt = await publicClient.waitForTransactionReceipt({
-        hash: transactionHash as Hex
-      });
-
-      if (receipt.status !== "success") {
-        throw new Error(`Transaction ${transactionHash} reverted.`);
-      }
-
-      receipts.push({
-        description: tx.description ?? operation.summary ?? `${operation.kind} ${operation.amountUsdc} USDC`,
-        hash: transactionHash,
-        status: "success",
-        gasUsed: receipt.gasUsed.toString(),
-        blockNumber: receipt.blockNumber.toString()
-      });
-
-      nonce += 1;
-    }
-  }
-
-  return {
-    rpcUrl: params.settings.baseRpcUrl,
-    transactions: receipts
-  };
-}
-
 function receiptPathForRun(settings: VaultManagerSettings, profileId: string, runId: string): string {
   return path.join(settings.dataRoot, "runs", profileId, `${runId}.json`);
 }
@@ -739,7 +494,7 @@ function allocationRows(params: {
   targetAmounts: Map<string, bigint>;
   vaultNames: Map<string, string>;
   totalManaged: bigint;
-}): RebalanceRunResult["allocations"] {
+}): PlanResult["allocations"] {
   const addresses = [...new Set([...params.currentAmounts.keys(), ...params.targetAmounts.keys()])];
 
   return addresses
@@ -762,12 +517,11 @@ function allocationRows(params: {
     .map(({ sortTarget: _, ...row }) => row);
 }
 
-export async function runRebalance(
+export async function runPlan(
   settings: VaultManagerSettings,
   profileId: string,
-  mode: RebalanceMode,
-  overrideDeps?: RebalanceReadDeps
-): Promise<RebalanceRunResult> {
+  overrideDeps?: PlanReadDeps
+): Promise<PlanResult> {
   const loaded = await loadProfile(settings, profileId);
   const profile = loaded.profile;
   if (!profile) {
@@ -784,15 +538,10 @@ export async function runRebalance(
     settings,
     profileId: profile.profileId,
     runId,
-    mode
+    mode: "plan"
   });
-  const tokenSource = profile.tokenSource ?? settings.defaultTokenSource;
-  const tokenSourceDescription = describeTokenSource(tokenSource);
-  const tokenReadyProbe = await resolveApiToken(tokenSource);
-  const tokenReady = tokenReadyProbe.ok;
 
-  await logger.event("start", "Rebalance run started", {
-    mode,
+  await logger.event("start", "Plan computation started", {
     walletAddress: profile.walletAddress,
     chain: profile.chain,
     riskProfile: profile.riskProfile,
@@ -802,10 +551,6 @@ export async function runRebalance(
   const blockers: string[] = [];
   const reasons: string[] = [];
   const warnings: string[] = [];
-  const execution: RebalanceRunResult["execution"] = {
-    rpcUrl: settings.baseRpcUrl,
-    transactions: []
-  };
 
   await logger.event("read", "Fetching live Morpho state");
 
@@ -930,93 +675,20 @@ export async function runRebalance(
     clippedByTurnover: action.clippedByTurnover
   }));
 
-  let operations: RebalanceOperationResult[] = [];
-  let status: RebalanceStatus =
+  const status: PlanStatus =
     blockers.length > 0 ? "blocked" : reasons.length > 0 ? "no_op" : "planned";
 
-  if (status === "planned") {
-    await logger.event("prepare", "Preparing Morpho transactions", {
-      actionCount: actions.length
-    });
-    operations = await prepareActionOperations(profile, actions, deps);
-    const failedOperation = operations.find((operation) => !operation.simulationOk || Boolean(operation.error));
-    if (failedOperation) {
-      blockers.push(
-        failedOperation.error ??
-          `Simulation failed for ${failedOperation.kind} ${failedOperation.amountUsdc} USDC on ${failedOperation.vaultAddress}.`
-      );
-      status = "blocked";
-      await logger.event("error", "Preparation or simulation failed", {
-        vaultAddress: failedOperation.vaultAddress,
-        kind: failedOperation.kind,
-        error: failedOperation.error ?? null
-      });
-    } else {
-      await logger.event("prepare", "All prepared operations simulated successfully", {
-        operationCount: operations.length
-      });
-    }
-  }
-
-  if (mode === "live" && status === "planned") {
-    const source = profile.tokenSource ?? settings.defaultTokenSource;
-    const resolution = await resolveApiToken(source);
-
-    if (!resolution.ok) {
-      status = "blocked";
-      reasons.push(`Failed to resolve OWS API token (${resolution.description}): ${resolution.error}`);
-      await logger.event("error", "Live execution blocked: token resolution failed", {
-        tokenSource: describeTokenSource(source)
-      });
-    } else {
-      try {
-        await logger.event("execute", "Signing and broadcasting transactions", {
-          operationCount: operations.length,
-          tokenSource: resolution.description
-        });
-        const liveExecution = await executeOperations({
-          settings,
-          profile,
-          operations,
-          token: resolution.value
-        });
-        execution.rpcUrl = liveExecution.rpcUrl;
-        execution.transactions = liveExecution.transactions;
-        status = "executed";
-        await logger.event("verify", "Transactions confirmed", {
-          transactionCount: liveExecution.transactions.length,
-          hashes: liveExecution.transactions.map((tx) => tx.hash)
-        });
-      } catch (error) {
-        status = "blocked";
-        reasons.push((error as Error).message);
-        await logger.event("error", "Live execution failed", {
-          error: (error as Error).message
-        });
-      }
-    }
-  }
-
-  const result: RebalanceRunResult = {
+  const result: PlanResult = {
     runId,
-    mode,
-    status: blockers.length > 0 ? "blocked" : status,
+    status,
     profileId: profile.profileId,
     createdAt,
     receiptPath,
     logPath,
     walletAddress: profile.walletAddress,
     riskProfile: profile.riskProfile,
-    tokenEnvVar: profile.tokenEnvVar,
-    tokenSource: tokenSourceDescription,
-    tokenReady,
     reasons: [...blockers, ...reasons],
-    warnings: [
-      ...warnings,
-      ...operations.flatMap((operation) =>
-        operation.warnings.map((warning) => `${warning.level}: ${warning.message}`)
-      )
-    ],
+    warnings,
     metrics: {
       idleUsdc: formatUsdc(idleUsdc),
       totalManagedUsdc: formatUsdc(totalManaged),
@@ -1049,23 +721,20 @@ export async function runRebalance(
       vaultNames,
       totalManaged
     }),
-    actions: actionResults,
-    operations,
-    execution
+    actions: actionResults
   };
 
   await persistRunReceipt(result);
-  await logger.event("complete", "Rebalance run complete", {
+  await logger.event("complete", "Plan computation complete", {
     status,
     actionCount: result.actions.length,
-    executedTransactionCount: result.execution.transactions.length,
     receiptPath: result.receiptPath
   });
   await logger.close();
   return result;
 }
 
-async function persistRunReceipt(result: RebalanceRunResult): Promise<void> {
+async function persistRunReceipt(result: PlanResult): Promise<void> {
   await ensureDir(path.dirname(result.receiptPath));
   await writeJsonFile(result.receiptPath, result);
 }

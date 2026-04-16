@@ -22,7 +22,7 @@ Use this checklist on the candidate package that will be published. The goal is 
 - [ ] `openclaw plugins enable morpho-vault-manager` succeeds.
 - [ ] `openclaw gateway restart` succeeds.
 - [ ] The plugin is visible in OpenClaw plugin state after restart.
-- [ ] `openclaw vault-manager --help` shows `configure`, `reconfigure`, `status`, `run-now`, `dry-run`, `live-run`, `pause`, and `resume`.
+- [ ] `openclaw vault-manager --help` shows `configure`, `reconfigure`, `status`, `run-now`, `plan`, `pause`, and `resume`.
 
 ## Configure Verification
 
@@ -48,10 +48,8 @@ Use this checklist on the candidate package that will be published. The goal is 
 
 - [ ] Operate the installed plugin through `openclaw` itself, not repo-local scripts only.
 - [ ] `openclaw vault-manager status` reports profile, workspace, cron, and token-source readiness.
-- [ ] `openclaw vault-manager dry-run --json` succeeds for the configured profile.
+- [ ] `openclaw vault-manager plan --json` succeeds for the configured profile.
 - [ ] `openclaw vault-manager reconfigure` starts correctly and reuses the existing profile state.
-- [ ] `openclaw vault-manager live-run` refuses execution without the explicit arming flag.
-- [ ] `openclaw vault-manager live-run --allow-live` is exercised only in a safe release-validation environment when a real live-path test is intended.
 - [ ] `openclaw vault-manager run-now` queues an isolated cron run successfully.
 - [ ] `openclaw vault-manager pause` disables the cron job.
 - [ ] `openclaw vault-manager resume` re-enables the cron job.

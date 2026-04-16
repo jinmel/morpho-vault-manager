@@ -3,9 +3,8 @@ import {
   pauseProfile,
   resumeProfile,
   runConfigureFlow,
-  runProfileDryRun,
-  runProfileLive,
   runProfileNow,
+  runProfilePlan,
   showStatus
 } from "./configure.js";
 import { runTeardown, runTeardownAll } from "./teardown.js";
@@ -64,22 +63,12 @@ export function registerVaultManagerCli({ program, logger, settings }: RegisterC
     });
 
   vaultManager
-    .command("dry-run")
-    .description("Compute a deterministic rebalance plan without signing")
+    .command("plan")
+    .description("Compute a deterministic rebalance plan (scoring, allocation, actions)")
     .option("--profile <id>", "Profile id", "default")
     .option("--json", "Output JSON", false)
     .action(async (opts: { profile: string; json: boolean }) => {
-      await runProfileDryRun(settings, opts.profile, opts.json);
-    });
-
-  vaultManager
-    .command("live-run")
-    .description("Execute a rebalance through OWS with explicit arming")
-    .option("--profile <id>", "Profile id", "default")
-    .option("--json", "Output JSON", false)
-    .option("--allow-live", "Arm live execution", false)
-    .action(async (opts: { profile: string; json: boolean; allowLive: boolean }) => {
-      await runProfileLive(settings, opts.profile, opts.json, opts.allowLive);
+      await runProfilePlan(settings, opts.profile, opts.json);
     });
 
   vaultManager

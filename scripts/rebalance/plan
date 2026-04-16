@@ -10,6 +10,6 @@ ensure_tmp_dirs
 
 PROFILE_ID="${VAULT_MANAGER_PROFILE:-default}"
 
-log "running rebalance dry-run for profile ${PROFILE_ID}"
+log "running rebalance plan for profile ${PROFILE_ID}"
 
-node "$ROOT_DIR/dist/src/bin/rebalance.js" dry-run --profile "$PROFILE_ID"
+node "$ROOT_DIR/dist/src/bin/rebalance.js" --profile "$PROFILE_ID"

@@ -87,20 +87,20 @@ The rebalance runtime uses `morpho-cli` directly. Morpho skill content is instal
 10. Plugin writes `AGENTS.md` standing orders into that workspace.
 11. Plugin configures cron delivery for that profile: default `channel=last`, or an explicit Telegram target discovered from OpenClaw directory surfaces.
 12. Plugin creates an isolated OpenClaw cron job for periodic execution.
-13. Plugin runs a final validation dry-run against live Morpho state and persists the outcome in the profile.
+13. Plugin runs a final validation plan against live Morpho state and persists the outcome in the profile.
 
 ### Rebalance Run
 
 1. OpenClaw cron wakes the dedicated agent in an isolated session.
-2. The agent reads standing instructions and current profile state.
-3. The agent reads current Morpho positions and candidate vault state.
-4. The agent computes target allocation and drift.
-5. If action is needed, it prepares transactions with Morpho tooling.
-6. The agent verifies simulation success and warnings.
-7. The execution path serializes each prepared transaction, then sends it to OWS for signing.
-8. OWS signs with its default policy behavior; the plugin does not create or manage custom OWS policy artifacts.
-9. The plugin wrapper broadcasts the signed transaction and waits for receipts.
-10. The run verifies outcomes and reports results.
+2. The agent calls `openclaw vault-manager plan` to get a deterministic allocation plan (vault scoring, target allocations, actions).
+3. If the plan status is `no_op` or `blocked`, the agent reports reasons and stops.
+4. If the plan status is `planned`, the agent executes each action:
+   a. Prepares transactions using morpho-cli (`morpho prepare-deposit` or `morpho prepare-withdraw`).
+   b. Verifies simulation success. Stops on first failure.
+   c. Signs the prepared transaction using OWS (`ows sign tx`).
+   d. Broadcasts the signed transaction to the Base network.
+   e. Waits for transaction confirmation.
+5. The agent reports all executed transactions (hashes, gas) or failure reasons.
 
 ## Repository Structure Targets
 

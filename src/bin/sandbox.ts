@@ -6,10 +6,10 @@ import {
   FIXTURE_VAULT_A,
   FIXTURE_VAULT_B,
   FIXTURE_WALLET,
-  makeFixtureRebalanceDeps
+  makeFixturePlanDeps
 } from "../lib/fixtures.js";
 import { saveProfile } from "../lib/profile.js";
-import { runRebalance } from "../lib/rebalance.js";
+import { runPlan } from "../lib/rebalance.js";
 import type { VaultManagerProfile, VaultManagerSettings } from "../lib/types.js";
 
 type SandboxArgs = {
@@ -52,7 +52,6 @@ function makeSandboxSettings(root: string): VaultManagerSettings {
     },
     baseAgentId: "vault-manager",
     baseCronName: "Morpho Vault Rebalance",
-    dryRunByDefault: true
   };
 }
 
@@ -93,7 +92,7 @@ async function makeSandboxProfile(
 
 function depsForScenario(scenario: SandboxArgs["scenario"]) {
   if (scenario === "no-op") {
-    return makeFixtureRebalanceDeps({
+    return makeFixturePlanDeps({
       positions: [
         { vaultAddress: FIXTURE_VAULT_A.address, vaultName: FIXTURE_VAULT_A.name, suppliedUsdc: "5000" },
         { vaultAddress: FIXTURE_VAULT_B.address, vaultName: FIXTURE_VAULT_B.name, suppliedUsdc: "5000" }
@@ -102,12 +101,12 @@ function depsForScenario(scenario: SandboxArgs["scenario"]) {
     });
   }
   if (scenario === "blocked") {
-    return makeFixtureRebalanceDeps({
-      idleUsdc: "5000",
-      simulationFails: true
+    // Idle amount large enough that planned turnover exceeds the risk preset's maxTurnoverUsd cap.
+    return makeFixturePlanDeps({
+      idleUsdc: "100000"
     });
   }
-  return makeFixtureRebalanceDeps({ idleUsdc: "5000" });
+  return makeFixturePlanDeps({ idleUsdc: "5000" });
 }
 
 async function cleanup(root: string): Promise<void> {
@@ -127,7 +126,7 @@ async function main(): Promise<void> {
   try {
     const profile = await makeSandboxProfile(settings, args.scenario);
     const deps = depsForScenario(args.scenario);
-    const result = await runRebalance(settings, profile.profileId, "dry-run", deps);
+    const result = await runPlan(settings, profile.profileId, deps);
 
     const report = {
       scenario: args.scenario,

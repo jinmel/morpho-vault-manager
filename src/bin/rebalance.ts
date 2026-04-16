@@ -1,50 +1,28 @@
-import type { RebalanceMode } from "../lib/rebalance.js";
-
 function parseArgs(argv: string[]): {
-  mode: RebalanceMode;
   profileId: string;
-  allowLive: boolean;
 } {
-  const [modeArg, ...rest] = argv;
-  if (modeArg !== "dry-run" && modeArg !== "live") {
-    throw new Error("Usage: node src/bin/rebalance.ts <dry-run|live> [--profile <id>] [--allow-live]");
-  }
-
   let profileId = "default";
-  let allowLive = false;
 
-  for (let index = 0; index < rest.length; index += 1) {
-    const arg = rest[index];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
     if (arg === "--profile") {
-      profileId = rest[index + 1] ?? profileId;
+      profileId = argv[index + 1] ?? profileId;
       index += 1;
-      continue;
-    }
-
-    if (arg === "--allow-live") {
-      allowLive = true;
     }
   }
 
-  return {
-    mode: modeArg,
-    profileId,
-    allowLive
-  };
+  return { profileId };
 }
 
 async function main(): Promise<void> {
-  const { mode, profileId, allowLive } = parseArgs(process.argv.slice(2));
-  if (mode === "live" && !allowLive) {
-    throw new Error("Live execution requires --allow-live.");
-  }
+  const { profileId } = parseArgs(process.argv.slice(2));
 
-  const [{ runRebalance }, { resolveVaultManagerSettings }] = await Promise.all([
+  const [{ runPlan }, { resolveVaultManagerSettings }] = await Promise.all([
     import(new URL("../lib/rebalance.ts", import.meta.url).href),
     import(new URL("../lib/settings.ts", import.meta.url).href)
   ]);
   const settings = resolveVaultManagerSettings();
-  const result = await runRebalance(settings, profileId, mode);
+  const result = await runPlan(settings, profileId);
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 

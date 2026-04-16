@@ -7,9 +7,6 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-function booleanValue(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined;
-}
 
 export function resolveVaultManagerSettings(pluginConfig?: Record<string, unknown>): VaultManagerSettings {
   const stateDir = resolveStateDir();
@@ -55,6 +52,5 @@ export function resolveVaultManagerSettings(pluginConfig?: Record<string, unknow
     ),
     baseAgentId: "vault-manager",
     baseCronName: "Morpho Vault Rebalance",
-    dryRunByDefault: booleanValue(config.dryRunByDefault) ?? true
   };
 }

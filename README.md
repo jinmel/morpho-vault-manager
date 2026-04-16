@@ -40,7 +40,7 @@ The configure flow will:
 5. generate the dedicated agent workspace and `AGENTS.md`
 6. choose how cron results are delivered (`last` route by default, or a pinned target)
 7. create the OpenClaw cron job
-8. run a final dry-run validation
+8. run a final validation plan
 
 The plugin never stores owner credentials or raw private keys in repo files, prompts, or profile JSON.
 
@@ -48,7 +48,7 @@ The plugin never stores owner credentials or raw private keys in repo files, pro
 
 ```bash
 openclaw vault-manager status
-openclaw vault-manager dry-run --json
+openclaw vault-manager plan --json
 openclaw vault-manager run-now
 ```
 

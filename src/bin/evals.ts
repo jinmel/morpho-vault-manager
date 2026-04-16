@@ -19,16 +19,15 @@ import {
 } from "../lib/secrets.js";
 import type {
   MorphoPositionsResponse,
-  MorphoPreparedOperation,
   MorphoTokenBalanceResponse,
   MorphoVaultDetail,
   MorphoVaultPosition
 } from "../lib/morpho.js";
 import { saveProfile } from "../lib/profile.js";
 import {
-  runRebalance,
-  type RebalanceReadDeps,
-  type RebalanceRunResult
+  runPlan,
+  type PlanReadDeps,
+  type PlanResult
 } from "../lib/rebalance.js";
 import type { RiskProfileId, VaultManagerProfile, VaultManagerSettings } from "../lib/types.js";
 
@@ -57,8 +56,8 @@ type Scenario = {
   positions: PositionFixture[];
   idleUsdc: string;
   marketPositions?: Array<Record<string, unknown>>;
-  depsFactory?: (scenario: Scenario) => RebalanceReadDeps;
-  expect: (result: RebalanceRunResult) => void | Promise<void>;
+  depsFactory?: (scenario: Scenario) => PlanReadDeps;
+  expect: (result: PlanResult) => void | Promise<void>;
 };
 
 const SCENARIO_WALLET = getAddress("0x1111111111111111111111111111111111111111");
@@ -168,35 +167,7 @@ function fixtureBalance(walletAddress: string, amount: string): MorphoTokenBalan
   };
 }
 
-function fixturePreparedOperation(params: {
-  kind: "deposit" | "withdraw";
-  vaultAddress: string;
-  walletAddress: string;
-  amount: string;
-  succeed: boolean;
-}): MorphoPreparedOperation {
-  return {
-    operation: params.kind === "deposit" ? "vault-supply" : "vault-withdraw",
-    chain: "base",
-    summary: `${params.kind} ${params.amount} USDC via ${params.vaultAddress}`,
-    transactions: [
-      {
-        to: getAddress(params.vaultAddress),
-        data: "0xdeadbeef",
-        value: "0",
-        chainId: "eip155:8453",
-        description: `${params.kind} ${params.amount} USDC`
-      }
-    ],
-    simulated: true,
-    simulationOk: params.succeed,
-    warnings: params.succeed
-      ? []
-      : [{ level: "error", message: "Simulation failed (fixture)." }]
-  };
-}
-
-function fixtureDeps(scenario: Scenario): RebalanceReadDeps {
+function fixtureDeps(scenario: Scenario): PlanReadDeps {
   const vaultDetails = scenario.vaults.map(fixtureVault);
   const walletAddress = scenario.profile.walletAddress ?? SCENARIO_WALLET;
 
@@ -204,23 +175,7 @@ function fixtureDeps(scenario: Scenario): RebalanceReadDeps {
     queryVaults: async () => vaultDetails,
     getPositions: async () =>
       fixturePositions(walletAddress, scenario.positions, scenario.marketPositions ?? []),
-    getTokenBalance: async () => fixtureBalance(walletAddress, scenario.idleUsdc),
-    prepareDeposit: async (vaultAddress, _walletAddress, amount) =>
-      fixturePreparedOperation({
-        kind: "deposit",
-        vaultAddress,
-        walletAddress,
-        amount,
-        succeed: true
-      }),
-    prepareWithdraw: async (vaultAddress, _walletAddress, amount) =>
-      fixturePreparedOperation({
-        kind: "withdraw",
-        vaultAddress,
-        walletAddress,
-        amount,
-        succeed: true
-      })
+    getTokenBalance: async () => fixtureBalance(walletAddress, scenario.idleUsdc)
   };
 }
 
@@ -276,7 +231,7 @@ function assertEqual<T>(label: string, actual: T, expected: T): void {
   }
 }
 
-function assertContainsReason(result: RebalanceRunResult, substring: string): void {
+function assertContainsReason(result: PlanResult, substring: string): void {
   const match = result.reasons.some((reason) => reason.includes(substring));
   if (!match) {
     throw new Error(
@@ -310,7 +265,6 @@ function makeTempSettings(): VaultManagerSettings {
     },
     baseAgentId: "vault-manager",
     baseCronName: "Morpho Vault Rebalance",
-    dryRunByDefault: true
   };
 }
 
@@ -352,7 +306,7 @@ const SCENARIOS: Scenario[] = [
   },
   {
     id: "REB-003",
-    description: "Dry-run produces transaction plan",
+    description: "Plan produces actions for idle USDC",
     profile: {
       riskProfile: "balanced"
     },
@@ -365,7 +319,7 @@ const SCENARIOS: Scenario[] = [
         throw new Error("expected at least one planned action");
       }
       const totalAction = result.actions.reduce(
-        (acc, action) => acc + toUsdc(action.amountUsdc),
+        (acc: bigint, action: { amountUsdc: string }) => acc + toUsdc(action.amountUsdc),
         0n
       );
       const expectedMin = toUsdc("4800");
@@ -374,46 +328,6 @@ const SCENARIOS: Scenario[] = [
           `expected total action >= ${formatUnits(expectedMin, USDC_DECIMALS)} USDC, got ${formatUnits(totalAction, USDC_DECIMALS)}`
         );
       }
-      for (const operation of result.operations) {
-        if (!operation.simulationOk) {
-          throw new Error(`operation ${operation.vaultAddress} reports simulation failure`);
-        }
-      }
-    }
-  },
-  {
-    id: "REB-004",
-    description: "Preparation stops after the first simulation failure",
-    profile: {
-      riskProfile: "balanced"
-    },
-    vaults: [VAULT_A, VAULT_B],
-    positions: [],
-    idleUsdc: "5000",
-    depsFactory: (scenario) => {
-      const base = fixtureDeps(scenario);
-      let prepareDepositCalls = 0;
-      return {
-        ...base,
-        prepareDeposit: async (vaultAddress, walletAddress, amount) => {
-          prepareDepositCalls += 1;
-          return fixturePreparedOperation({
-            kind: "deposit",
-            vaultAddress,
-            walletAddress,
-            amount,
-            succeed: prepareDepositCalls > 1
-          });
-        }
-      };
-    },
-    expect(result) {
-      assertEqual("status", result.status, "blocked");
-      const failed = result.operations.find((operation) => !operation.simulationOk);
-      if (!failed) {
-        throw new Error("expected at least one failed operation in blocked run");
-      }
-      assertEqual("operation count", result.operations.length, 1);
     }
   },
   {
@@ -451,7 +365,7 @@ const SCENARIOS: Scenario[] = [
           throw new Error("log contains unredacted token value");
         }
       }
-      for (const required of ["start", "read", "plan", "prepare", "complete"]) {
+      for (const required of ["start", "read", "plan", "complete"]) {
         if (!phases.has(required)) {
           throw new Error(`expected phase "${required}" in logs, got [${[...phases].join(", ")}]`);
         }
@@ -471,7 +385,6 @@ const SCENARIOS: Scenario[] = [
       assertEqual("status", result.status, "blocked");
       assertContainsReason(result, "exceeds the configured cap");
       assertTrue("planned actions", result.actions.length > 0);
-      assertEqual("prepared operations", result.operations.length, 0);
       if (toUsdc(result.metrics.totalPlannedTurnoverUsdc) <= toUsdc(result.metrics.turnoverCapUsdc)) {
         throw new Error(
           `expected proposed turnover to exceed cap, got ${result.metrics.totalPlannedTurnoverUsdc} <= ${result.metrics.turnoverCapUsdc}`
@@ -499,7 +412,6 @@ const SCENARIOS: Scenario[] = [
     expect(result) {
       assertEqual("status", result.status, "blocked");
       assertContainsReason(result, "non-vault Morpho market position");
-      assertEqual("prepared operations", result.operations.length, 0);
     }
   },
   {
@@ -536,7 +448,7 @@ async function runScenario(scenario: Scenario): Promise<void> {
   const profile = await materializeProfile(settings, scenario);
   const deps = scenario.depsFactory ? scenario.depsFactory(scenario) : fixtureDeps(scenario);
 
-  const result = await runRebalance(settings, profile.profileId, "dry-run", deps);
+  const result = await runPlan(settings, profile.profileId, deps);
   await scenario.expect(result);
 }
 

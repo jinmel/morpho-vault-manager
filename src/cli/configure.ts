@@ -21,7 +21,7 @@ import {
 } from "../lib/openclaw.js";
 import { runPreflightChecks } from "../lib/preflight.js";
 import { commandExists } from "../lib/shell.js";
-import { runRebalance, type RebalanceRunResult } from "../lib/rebalance.js";
+import { runPlan, type PlanResult } from "../lib/rebalance.js";
 import { buildApiKeyCreateCommand, buildWalletCreateCommand } from "../lib/ows.js";
 import { loadProfile, saveProfile } from "../lib/profile.js";
 import { renderAgentInstructions } from "../lib/template.js";
@@ -789,22 +789,22 @@ async function promptCronSchedule(
   );
 }
 
-async function runValidationDryRun(
+async function runValidationPlan(
   settings: VaultManagerSettings,
   profileId: string
-): Promise<RebalanceRunResult | null> {
+): Promise<PlanResult | null> {
   const wantsValidation = requiredBoolean(await p.confirm({
-    message: "Run a validation dry-run now against live Morpho state?",
+    message: "Run a validation plan now against live Morpho state?",
     initialValue: true
   }), "validation confirmation");
 
   if (!wantsValidation) return null;
 
   const spinner = p.spinner();
-  spinner.start("Running dry-run rebalance");
+  spinner.start("Computing rebalance plan");
   try {
-    const result = await runRebalance(settings, profileId, "dry-run");
-    spinner.stop(`Dry-run ${result.status}`);
+    const result = await runPlan(settings, profileId);
+    spinner.stop(`Plan: ${result.status}`);
     await p.note(
       [
         `Status:  ${result.status}`,
@@ -813,24 +813,24 @@ async function runValidationDryRun(
         `Idle USDC:    ${result.metrics.idleUsdc}`,
         `Planned turnover: ${result.metrics.totalPlannedTurnoverUsdc}`,
         `Receipt: ${result.receiptPath}`,
-        ...(result.reasons.length > 0 ? ["", "Reasons:", ...result.reasons.map((reason) => `- ${reason}`)] : []),
+        ...(result.reasons.length > 0 ? ["", "Reasons:", ...result.reasons.map((reason: string) => `- ${reason}`)] : []),
         ...(result.actions.length > 0
           ? [
               "",
               "Planned actions:",
               ...result.actions.map(
-                (action) => `- ${action.kind} ${action.amountUsdc} USDC via ${action.vaultName}`
+                (action: { kind: string; amountUsdc: string; vaultName: string }) => `- ${action.kind} ${action.amountUsdc} USDC via ${action.vaultName}`
               )
             ]
           : [])
       ].join("\n"),
-      "Validation Dry Run"
+      "Validation Plan"
     );
     return result;
   } catch (error) {
-    spinner.stop("Dry-run failed");
+    spinner.stop("Plan failed");
     await p.note(
-      `Validation dry-run failed: ${(error as Error).message}`,
+      `Validation plan failed: ${(error as Error).message}`,
       "Validation Error"
     );
     return null;
@@ -1004,7 +1004,7 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     updatedAt: new Date().toISOString(),
     riskPreset,
     modelPreference,
-    armedForLiveExecution: existing.profile?.armedForLiveExecution ?? false,
+
     lastFundedCheckAt: fundingProbe?.checkedAt ?? existing.profile?.lastFundedCheckAt,
     lastFundedUsdc: fundingProbe?.balance ?? existing.profile?.lastFundedUsdc,
     lastValidationRun: existing.profile?.lastValidationRun
@@ -1083,7 +1083,7 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     "Configured"
   );
 
-  const validationResult = await runValidationDryRun(settings, profileId);
+  const validationResult = await runValidationPlan(settings, profileId);
   if (validationResult) {
     profile.lastValidationRun = {
       runId: validationResult.runId,
@@ -1243,10 +1243,9 @@ export async function runProfileNow(settings: VaultManagerSettings, profileId: s
   await p.note(output || "Run enqueued.", `Run Now: ${profileId}`);
 }
 
-function renderRunSummary(result: RebalanceRunResult): string {
+function renderPlanSummary(result: PlanResult): string {
   const lines = [
     `Status: ${result.status}`,
-    `Mode: ${result.mode}`,
     `Wallet: ${result.walletAddress}`,
     `Managed USDC: ${result.metrics.totalManagedUsdc}`,
     `Idle USDC: ${result.metrics.idleUsdc}`,
@@ -1270,45 +1269,23 @@ function renderRunSummary(result: RebalanceRunResult): string {
     }
   }
 
-  if (result.execution.transactions.length > 0) {
-    lines.push("");
-    lines.push("Receipts:");
-    for (const tx of result.execution.transactions) {
-      lines.push(`- ${tx.hash} (${tx.description})`);
-    }
-  }
-
   return lines.join("\n");
 }
 
-async function presentRunResult(result: RebalanceRunResult, json: boolean, title: string): Promise<void> {
+async function presentPlanResult(result: PlanResult, json: boolean, title: string): Promise<void> {
   if (json) {
     console.log(JSON.stringify(result, null, 2));
     return;
   }
 
-  await p.note(renderRunSummary(result), title);
+  await p.note(renderPlanSummary(result), title);
 }
 
-export async function runProfileDryRun(
+export async function runProfilePlan(
   settings: VaultManagerSettings,
   profileId: string,
   json: boolean
 ): Promise<void> {
-  const result = await runRebalance(settings, profileId, "dry-run");
-  await presentRunResult(result, json, `Dry Run: ${profileId}`);
-}
-
-export async function runProfileLive(
-  settings: VaultManagerSettings,
-  profileId: string,
-  json: boolean,
-  allowLive: boolean
-): Promise<void> {
-  if (!allowLive) {
-    fail("Live execution requires --allow-live.");
-  }
-
-  const result = await runRebalance(settings, profileId, "live");
-  await presentRunResult(result, json, `Live Run: ${profileId}`);
+  const result = await runPlan(settings, profileId);
+  await presentPlanResult(result, json, `Plan: ${profileId}`);
 }
