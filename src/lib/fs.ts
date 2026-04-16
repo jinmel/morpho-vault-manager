@@ -10,6 +10,17 @@ export async function writeTextFile(filePath: string, content: string): Promise<
   await writeFile(filePath, content, "utf8");
 }
 
+export async function readTextFile(filePath: string): Promise<string | null> {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export async function readJsonFile<T>(filePath: string): Promise<T | null> {
   try {
     const contents = await readFile(filePath, "utf8");

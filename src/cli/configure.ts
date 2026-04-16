@@ -7,7 +7,7 @@ import {
   MORPHO_MCP_URL,
   RISK_PRESETS
 } from "../lib/constants.js";
-import { ensureDir, writeTextFile } from "../lib/fs.js";
+import { ensureDir, readTextFile, writeTextFile } from "../lib/fs.js";
 import { getMorphoTokenBalance } from "../lib/morpho.js";
 import { describeTokenSource, resolveApiToken, type TokenSource } from "../lib/secrets.js";
 import {
@@ -863,8 +863,6 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     lastValidationRun: existing.profile?.lastValidationRun
   };
 
-  await writeTextFile(path.join(workspaceDir, "AGENTS.md"), renderAgentInstructions(profile));
-
   const agentResult = await ensureAgent({
     settings,
     agentId,
@@ -874,6 +872,16 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
 
   if (!agentResult.ok) {
     fail(`Failed to create or resolve OpenClaw agent ${agentId}.\n${agentResult.stderr || agentResult.stdout}`);
+  }
+
+  await writeTextFile(path.join(workspaceDir, "VAULT-MANAGER.md"), renderAgentInstructions(profile));
+
+  const agentsMd = await readTextFile(path.join(workspaceDir, "AGENTS.md"));
+  if (agentsMd !== null && !agentsMd.includes("VAULT-MANAGER.md")) {
+    await writeTextFile(
+      path.join(workspaceDir, "AGENTS.md"),
+      agentsMd.trimEnd() + "\n\n## Vault Manager\n\nSee [VAULT-MANAGER.md](VAULT-MANAGER.md) for standing orders.\n"
+    );
   }
 
   const cronResult = await upsertCronJob({
