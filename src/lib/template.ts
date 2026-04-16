@@ -63,13 +63,16 @@ Manage the configured wallet as a constrained Morpho vault allocator on Base. Th
 ## No-Op Conditions
 
 - No USDC balance and no current positions
+- Drift below the ${(preset.rebalanceDriftPct * 100).toFixed(1)}% threshold (unless the top vault set changed materially)
 - No candidate vaults passed the current risk constraints
+- Simulation failure (stop immediately, do not attempt remaining actions)
 
 ## Escalation Conditions
 
 - Simulation failure
 - Non-USDC vault position or non-vault Morpho market position on the wallet
-- Proposed move exceeds turnover limits
+- Proposed move exceeds the $${preset.maxTurnoverUsd.toLocaleString()} turnover cap
+- Repeated run failures across consecutive cron executions
 - Missing dependency or broken local tooling
 
 ## Security

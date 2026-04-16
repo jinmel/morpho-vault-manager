@@ -160,7 +160,7 @@ This is the intended direction for the repo:
 - weighted scoring: `apy_weight * net_apy + tvl_weight * normalized_tvl - fee_weight * fee_pct - rewards_penalty`
 - per-profile score weights and reward preference
 - target weight computation
-- drift detection
+- drift detection: no-op when max vault weight drift is below per-profile threshold (conservative 10%, balanced 7.5%, aggressive 5%) unless the top vault set changed materially
 - execution plan generation
 
 ### OpenClaw Adapter
