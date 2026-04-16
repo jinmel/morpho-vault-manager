@@ -39,6 +39,8 @@ type ConfigureContext = {
   settings: VaultManagerSettings;
   logger?: CliLogger;
   profileId: string;
+  walletOverrideRef?: string;
+  walletPassphraseEnvVar?: string;
 };
 
 type CronSchedulePresetId = "hourly" | "every6Hours" | "daily" | "weekdays";

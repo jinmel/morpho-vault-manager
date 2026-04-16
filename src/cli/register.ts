@@ -24,12 +24,19 @@ export function registerVaultManagerCli({ program, logger, settings }: RegisterC
     .command("configure")
     .description("Run the guided onboarding flow for a vault manager profile")
     .option("--profile <id>", "Profile id", "default")
-    .action(async (opts: { profile: string }) => {
+    .option("--wallet <ref>", "Use this existing OWS wallet (name or UUID) instead of auto-creating")
+    .option(
+      "--wallet-passphrase-env <var>",
+      "Env var name that holds the passphrase for --wallet (overrides the interactive prompt)"
+    )
+    .action(async (opts: { profile: string; wallet?: string; walletPassphraseEnv?: string }) => {
       logger?.info?.(`vault-manager: configure ${opts.profile}`);
       await runConfigureFlow({
         settings,
         logger,
-        profileId: opts.profile
+        profileId: opts.profile,
+        walletOverrideRef: opts.wallet,
+        walletPassphraseEnvVar: opts.walletPassphraseEnv
       });
     });
 
@@ -37,12 +44,19 @@ export function registerVaultManagerCli({ program, logger, settings }: RegisterC
     .command("reconfigure")
     .description("Re-run configure for an existing profile")
     .option("--profile <id>", "Profile id", "default")
-    .action(async (opts: { profile: string }) => {
+    .option("--wallet <ref>", "Use this existing OWS wallet (name or UUID) instead of auto-creating")
+    .option(
+      "--wallet-passphrase-env <var>",
+      "Env var name that holds the passphrase for --wallet (overrides the interactive prompt)"
+    )
+    .action(async (opts: { profile: string; wallet?: string; walletPassphraseEnv?: string }) => {
       logger?.info?.(`vault-manager: reconfigure ${opts.profile}`);
       await runConfigureFlow({
         settings,
         logger,
-        profileId: opts.profile
+        profileId: opts.profile,
+        walletOverrideRef: opts.wallet,
+        walletPassphraseEnvVar: opts.walletPassphraseEnv
       });
     });
 
