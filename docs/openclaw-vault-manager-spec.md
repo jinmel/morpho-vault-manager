@@ -224,20 +224,15 @@ Recommended creation path:
 openclaw agents add vault-manager --workspace ~/.openclaw/workspace-vault-manager
 ```
 
-The plugin writes an `AGENTS.md` file into that workspace. That file holds the persistent operating program:
+The plugin does not write a standing-orders markdown file into the workspace. The operating program — mandate, risk profile, candidate-vault discovery rule, rebalance rules, escalation rules, and reporting — is enforced mechanically inside the `openclaw vault-manager dry-run` / `live-run` CLI and the rebalance runtime, not as prompt content the agent is asked to follow.
 
-- mandate
-- risk profile
-- candidate-vault discovery rule (`morpho query-vaults` on Base filtered to USDC)
-- rebalance rules
-- escalation rules
-- reporting format
+`AGENTS.md` is a coding-agent convention (standing project instructions for tools like Claude Code or Codex). Reusing that filename for per-workspace runtime contract would be a category error: tooling that auto-loads `AGENTS.md` would conflate "editing rules for this repo" with "production execution contract for this wallet." The plugin avoids that collision by not writing any such file.
 
-The cron job then sends only a short message such as:
+The cron job sends a self-contained wake-up message that names the exact CLI commands the agent should run, for example:
 
-> Execute the Morpho vault rebalance program in AGENTS.md for the configured wallet. Use current onchain state. Do not act outside policy.
+> Run the Morpho vault rebalance for profile `<id>`. Start with: `openclaw vault-manager dry-run --profile <id> --json`. If the dry-run status is "planned", continue with: `openclaw vault-manager live-run --profile <id> --allow-live --json`. Report actions taken, receipts, or explicit no-op/block reasons.
 
-This is the right OpenClaw shape because standing orders belong in `AGENTS.md`, while cron defines when to execute them.
+Cron defines *when* to execute, and the CLI surface defines *what* the agent is allowed to do. The agent is not given discretion over the execution path via markdown.
 
 ### 5. OpenClaw cron
 
@@ -398,20 +393,15 @@ Instead, it should:
 
 The plugin can use OWS wallet info plus Morpho position reads to confirm funding state.
 
-### Step 5. Agent prompt / standing order generation
+### Step 5. Operating contract encoding
 
-Generate `AGENTS.md` from a template plus user answers.
+The plugin does not generate a standing-orders markdown file for the agent to interpret. The operating contract — wallet identity, chain and asset restrictions, candidate-vault discovery, target allocation, max turnover per run, no-op conditions, escalation rules, reporting format — is encoded in:
 
-The standing order should define:
+- the rebalance runtime (`src/lib/rebalance.ts` and friends), which enforces Base-only, USDC-only, simulate-before-sign, OWS-policy-gated execution mechanically
+- the `openclaw vault-manager dry-run` / `live-run` CLI surface, which is the only way the agent is allowed to act
+- the per-profile risk preset stored alongside the profile, which parameterizes the runtime
 
-- wallet identity
-- chain and asset restrictions
-- candidate-vault discovery rule
-- target allocation algorithm
-- max turnover per run
-- no-op conditions
-- escalation rules
-- reporting format
+The agent's entire discretion at runtime is limited to "invoke the CLI and report the result." There is no markdown file it is asked to read and follow.
 
 ### Step 6. Model selection
 
@@ -437,7 +427,7 @@ openclaw cron add \
   --tz "America/New_York" \
   --session isolated \
   --agent vault-manager \
-  --message "Execute the Morpho vault rebalance program in AGENTS.md for the configured wallet. Use live state, simulate before execution, and report actions or no-op reasons." \
+  --message "Run the Morpho vault rebalance for the default profile. Start with: openclaw vault-manager dry-run --profile default --json. If the dry-run status is \"planned\", continue with: openclaw vault-manager live-run --profile default --allow-live --json. Report actions taken, receipts, or explicit no-op/block reasons." \
   --announce
 ```
 
@@ -624,20 +614,20 @@ Suggested plugin config shape:
 }
 ```
 
-## Prompt Template Requirements
+## Runtime Contract Requirements
 
-The generated `AGENTS.md` should encode rules like:
+The rebalance runtime (not a prompt template) must enforce the following rules. Every rule below has to be mechanical: the CLI and `src/lib/rebalance.ts` fail closed if the rule is violated, regardless of what the agent was told.
 
 - only manage the configured wallet
 - only operate on Base
 - only manage USDC Morpho vault positions
 - candidate vaults come from `morpho query-vaults`, not from any other source
 - always simulate before signing
-- never hand-craft calldata and never invent alternate transactions if CLI preparation fails
+- never accept agent-authored calldata; every live transaction must originate from a `morpho-cli` prepare flow
 - never use owner credentials
-- report execute/verify details after each run
+- report execute/verify details after each run in the JSONL run log and receipt JSON
 
-This keeps the model behavior narrow even if the surrounding OpenClaw environment has more tools available.
+Encoding these as runtime invariants instead of as prompt content is the difference between "the model was asked to stay narrow" and "the model cannot widen the surface even if it tries." Prompts are advisory; the runtime is authoritative.
 
 ## Shipping Plan
 
@@ -706,7 +696,7 @@ The plugin is ready for v1 when all are true:
 2. `openclaw vault-manager configure` completes end-to-end on a fresh machine
 3. the configure flow creates an OWS wallet or imports one
 4. the agent only receives an OWS API token, never owner credentials
-5. the generated agent workspace contains standing orders in `AGENTS.md`
+5. the generated agent workspace directory exists and is bound to a dedicated OpenClaw agent; no standing-orders markdown is written into it
 6. a cron job is created and visible in `openclaw cron list`
 7. the rebalance loop can no-op cleanly
 8. the rebalance loop can prepare, simulate, and execute an allowed deposit/withdrawal

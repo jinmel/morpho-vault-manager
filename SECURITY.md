@@ -79,7 +79,7 @@ Configure optionally registers the hosted Morpho MCP server (`https://mcp.morpho
 
 - The MCP server exposes read tools (vaults, markets, positions, docs) and `prepare_*` tools that return unsigned transactions. The MCP endpoint cannot sign or broadcast.
 - Prepared transactions from the MCP server only become live writes if an operator signs them through OWS. OWS policy still gates every live signature.
-- The periodic rebalance agent does not invoke the MCP server. It uses `morpho-cli` directly and runs under the narrow AGENTS.md contract. MCP registration does not change its execution path.
+- The periodic rebalance agent does not invoke the MCP server. Its cron wake-up message names the exact `openclaw vault-manager dry-run` / `live-run` commands to run, and the rebalance runtime inside those commands is what enforces the Base-only, USDC-only, simulate-before-sign, policy-gated contract. MCP registration does not change that execution path.
 - The MCP server bypasses the plugin's own `read → prepare → simulate → policy → sign → verify` pipeline for any free-form chat that the operator may later run. That pipeline is a defense-in-depth layer, not the only one — OWS policy remains the enforcement point.
 - MCP registration is a user-gated confirmation step in configure and is idempotent: existing `morpho` entries are preserved, not overwritten.
 - To remove the MCP registration, run `openclaw mcp unset morpho`.

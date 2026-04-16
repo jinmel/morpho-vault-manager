@@ -84,16 +84,15 @@ The rebalance runtime uses `morpho-cli` directly. The plugin's configure flow ad
 6. Plugin records the risk profile.
 7. Plugin offers funding guidance and an optional "continue once funded" balance poll against Morpho token reads.
 8. Plugin offers optional model-routing preference for the dedicated agent.
-9. Plugin creates a dedicated OpenClaw agent workspace.
-10. Plugin writes `AGENTS.md` standing orders into that workspace.
-11. Plugin creates an isolated OpenClaw cron job for periodic execution.
-12. Plugin runs a final validation dry-run against live Morpho state and persists the outcome in the profile.
+9. Plugin creates a dedicated OpenClaw agent workspace directory that the periodic agent will run inside. No standing-orders markdown is written; the operating contract is encoded mechanically in the CLI and the rebalance runtime.
+10. Plugin creates an isolated OpenClaw cron job whose wake-up message directly tells the agent to run `openclaw vault-manager dry-run` and, if planned, `openclaw vault-manager live-run --allow-live`.
+11. Plugin runs a final validation dry-run against live Morpho state and persists the outcome in the profile.
 
 ### Rebalance Run
 
-1. OpenClaw cron wakes the dedicated agent in an isolated session.
-2. The agent reads standing instructions and current profile state.
-3. The agent reads current Morpho positions and candidate vault state.
+1. OpenClaw cron wakes the dedicated agent in an isolated session with a wake-up message that names the exact CLI commands to run.
+2. The agent runs `openclaw vault-manager dry-run --json` and reads the structured result instead of recomputing the plan.
+3. The rebalance runtime inside that CLI reads current Morpho positions and candidate vault state.
 4. The agent computes target allocation and drift.
 5. If action is needed, it prepares transactions with Morpho tooling.
 6. The agent verifies simulation success and warnings.

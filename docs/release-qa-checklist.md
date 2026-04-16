@@ -38,9 +38,9 @@ Use this checklist on the candidate package that will be published. The goal is 
 - [ ] Token source validation fails clearly when the configured env var or file is missing.
 - [ ] Funding guidance shows the Base wallet address and explicitly says `USDC on Base`.
 - [ ] Model selection persists into the generated agent configuration.
-- [ ] The generated workspace contains `AGENTS.md` with Base-only, USDC-only, and OWS-only signing rules.
+- [ ] The configure flow creates the dedicated agent workspace directory. It does NOT write a standing-orders markdown file into the workspace; the Base-only, USDC-only, and OWS-gated rules are enforced by the rebalance runtime, not by prompt content.
 - [ ] The configure flow creates the dedicated agent successfully.
-- [ ] The configure flow creates the cron job successfully.
+- [ ] The configure flow creates the cron job whose wake-up message names `openclaw vault-manager dry-run` and `openclaw vault-manager live-run --allow-live` directly.
 - [ ] The final validation run completes as a dry run and persists its result.
 
 ## Post-Configure Verification
