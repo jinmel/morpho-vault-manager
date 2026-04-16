@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { getAddress } from "viem";
 import { commandExists as defaultCommandExists, runCommand as defaultRunCommand } from "./shell.js";
 import type { CommandResult } from "./shell.js";
+import { setEnvVar } from "./openclaw.js";
 import type { VaultManagerSettings, WalletMarker } from "./types.js";
 
 export type OwsBootstrapDeps = {
@@ -323,4 +324,54 @@ export async function resolveOrCreateWallet(
     source: "auto-created",
     canonicalName: marker.canonicalName
   };
+}
+
+export type ProvisionApiKeyResult = {
+  token: string;
+};
+
+export async function provisionApiKey(
+  params: {
+    settings: VaultManagerSettings;
+    walletRef: string;
+    keyName: string;
+    passphrase: string;
+  },
+  input?: OwsBootstrapDeps
+): Promise<ProvisionApiKeyResult> {
+  const d = deps(input);
+  const result = await d.runCommand(
+    params.settings.owsCommand,
+    ["key", "create", "--name", params.keyName, "--wallet", params.walletRef],
+    { env: { ...process.env, OWS_PASSPHRASE: params.passphrase } }
+  );
+
+  if (result.code !== 0) {
+    const stderr = (result.stderr || result.stdout).toLowerCase();
+    if (stderr.includes("passphrase") || stderr.includes("unauthorized") || stderr.includes("decrypt")) {
+      throw Object.assign(new Error("passphrase rejected by ows key create"), {
+        code: "bad_passphrase"
+      });
+    }
+    throw new Error(`ows key create failed: ${result.stderr || result.stdout}`);
+  }
+
+  const parsed = parseOwsKeyCreateOutput(result.stdout);
+  if ("error" in parsed) {
+    throw new Error(`ows key create succeeded but output could not be parsed: ${parsed.error}`);
+  }
+  return { token: parsed.token };
+}
+
+export async function writeTokenToOpenclawEnv(
+  settings: VaultManagerSettings,
+  envVar: string,
+  token: string
+): Promise<void> {
+  const envResult = await setEnvVar(settings, envVar, token);
+  if (!envResult.ok) {
+    throw new Error(
+      `Failed to set env.vars.${envVar} in openclaw config: ${envResult.stderr || "unknown error"}`
+    );
+  }
 }
