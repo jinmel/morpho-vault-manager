@@ -75,3 +75,46 @@ export async function deleteWalletMarker(
     throw error;
   }
 }
+
+export type ParsedWalletCreate = {
+  walletRef: string;
+  walletAddress: `0x${string}`;
+  mnemonic: string;
+};
+
+export function parseOwsWalletCreateOutput(
+  stdout: string
+): ParsedWalletCreate | { error: string } {
+  const text = stdout.replace(/\r\n/g, "\n");
+
+  const walletMatch = text.match(/Created wallet\s+([0-9a-fA-F-]{8,})/);
+  if (!walletMatch) {
+    return { error: "could not find 'Created wallet <uuid>' line" };
+  }
+  const walletRef = walletMatch[1];
+
+  const evmMatch = text.match(/eip155:\d+\s+(0x[0-9a-fA-F]{40})\b/);
+  if (!evmMatch) {
+    return { error: "could not find eip155 address row" };
+  }
+  let walletAddress: `0x${string}`;
+  try {
+    walletAddress = getAddress(evmMatch[1]);
+  } catch {
+    return { error: `invalid EVM address: ${evmMatch[1]}` };
+  }
+
+  const mnemonicMatch = text.match(
+    /(?:mnemonic|recovery phrase)[^\n]*\n+((?:[a-z]+\s+){11,23}[a-z]+)/i
+  );
+  const mnemonic = mnemonicMatch ? mnemonicMatch[1].trim().replace(/\s+/g, " ") : "";
+  if (!mnemonic) {
+    return { error: "could not find mnemonic block (did you pass --show-mnemonic?)" };
+  }
+  const wordCount = mnemonic.split(/\s+/).length;
+  if (wordCount !== 12 && wordCount !== 24) {
+    return { error: `mnemonic word count ${wordCount} is not 12 or 24` };
+  }
+
+  return { walletRef, walletAddress, mnemonic };
+}
