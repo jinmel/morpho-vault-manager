@@ -8,7 +8,7 @@ The plugin should combine:
 
 - **OpenClaw native plugin capabilities** for installability, CLI onboarding, agent configuration, and cron scheduling
 - **Morpho skill content** vendored from [`morpho-org/morpho-skills`](https://github.com/morpho-org/morpho-skills/) so the agent has Morpho-specific operating instructions
-- **Open Wallet Standard (OWS)** for wallet creation, policy-gated agent access, and transaction signing/broadcast
+- **Open Wallet Standard (OWS)** for wallet creation, agent access, and transaction signing/broadcast
 
 The first release should be **Base + USDC + Morpho vaults only**.
 
@@ -17,7 +17,7 @@ The first release should be **Base + USDC + Morpho vaults only**.
 After install, an OpenClaw user can run a single configure flow that:
 
 1. creates or imports a dedicated OWS wallet
-2. constrains agent access with OWS policies and an API token
+2. constrains agent access with an OWS API token
 3. records the user’s risk profile and rebalance preferences
 4. guides the user to fund the wallet with USDC on Base
 5. creates a dedicated OpenClaw agent workspace with standing instructions
@@ -57,7 +57,7 @@ OpenClaw bundles are good for importing skills and MCP settings from Codex/Claud
 - local file/state management
 - agent workspace generation
 - cron job creation
-- OWS policy + token provisioning
+- OWS token provisioning
 
 So the correct packaging for v1 is:
 
@@ -119,7 +119,7 @@ The actual periodic execution should use **OpenClaw cron**, not a custom schedul
 - choose among USDC vaults returned by `morpho query-vaults` on Base
 - rebalance when allocation drift exceeds configured thresholds
 - keep a small USDC cash buffer if configured
-- skip execution when simulation fails or policy denies
+- skip execution when simulation fails or OWS signing fails
 
 ### Unsupported in v1
 
@@ -141,7 +141,6 @@ The plugin should ship:
 - a CLI module for `vault-manager` commands
 - vendored skill directories
 - prompt templates
-- OWS policy executable(s)
 
 Suggested layout:
 
@@ -160,8 +159,6 @@ openclaw-vault-manager/
       SKILL.md
   prompts/
     AGENTS.template.md
-  policies/
-    morpho-vault-manager-policy.ts
   docs/
     openclaw-vault-manager-spec.md
 ```
@@ -198,14 +195,12 @@ Why:
 
 - it matches the OWS “local subprocess” access profile
 - it avoids embedding wallet logic into the plugin
-- it preserves OWS policy semantics
 - it keeps raw API-token handling out of plugin process memory in v1
 - it is straightforward to audit and replace later
 
 The plugin should shell out to `ows` for:
 
 - wallet create/import/export guidance
-- policy creation
 - API key creation/revocation instructions and token-source wiring
 - sign, and use `signAndSend` later if/when the CLI exposes a documented surface for it
 
@@ -235,7 +230,7 @@ The plugin writes an `AGENTS.md` file into that workspace. That file holds the p
 
 The cron job then sends only a short message such as:
 
-> Execute the Morpho vault rebalance program in AGENTS.md for the configured wallet. Use current onchain state. Do not act outside policy.
+> Execute the Morpho vault rebalance program in AGENTS.md for the configured wallet. Use current onchain state and the documented runtime checks.
 
 This is the right OpenClaw shape because standing orders belong in `AGENTS.md`, while cron defines when to execute them.
 
@@ -266,34 +261,25 @@ The plugin must not build its own scheduler.
 
 OWS distinguishes:
 
-- **owner credential**: full wallet access, bypasses policy
-- **API token**: policy-gated agent access
+- **owner credential**: full wallet access
+- **API token**: delegated agent access
 
 The plugin must only provision the agent with an **OWS API token**, never the owner passphrase.
 
-### Policy model
+### Runtime enforcement model
 
-The destination contract allowlist is enforced at the runtime layer, not at OWS policy time. The rebalance runtime only forwards calldata produced by `morpho-cli` prepare flows to OWS — it has no code path that accepts agent-authored calldata — so the trust boundary for destination addresses is the Morpho CLI prepare surface.
+The plugin does not create or manage custom OWS policies. It relies on OWS defaults and constrains execution at the runtime layer instead.
 
-OWS policy still exists as a mechanical cross-check. It enforces the handful of invariants that do not depend on knowing a specific vault address ahead of time:
+The rebalance runtime only forwards calldata produced by `morpho-cli` prepare flows to OWS — it has no code path that accepts agent-authored calldata — so the trust boundary for destination addresses is the Morpho CLI prepare surface.
 
-1. a declarative policy:
-   - `allowed_chains = ["eip155:8453"]`
-   - optional `expires_at`
-2. a custom executable policy:
-   - block any transaction with non-zero native value
-   - block any `approve` call whose target is not the configured USDC contract
-   - block any selector that is not `approve`, `deposit`, or `withdraw`
-   - enforce max single-run turnover via the amount word in deposit/withdraw/approve calldata
-
-### Policy checks the plugin should enforce
+### Runtime checks the plugin should enforce
 
 - Base only
-- USDC-only approvals (target must be the canonical USDC contract)
-- only `approve`, `deposit`, and `withdraw` selectors reach signing
-- no native-value transfers
+- USDC-only vault operations
+- no agent-authored calldata reaches signing
 - max notional per rebalance run
-- optional max concentration per vault (computed at rebalance time, not at policy time)
+- optional max concentration per vault
+- simulation must succeed before signing
 
 ### Secret handling
 
@@ -340,14 +326,12 @@ For v1, this step intentionally keeps the raw token out of the wizard process. T
 
 Create or update:
 
-- OWS policy files
 - exact OWS API-key provisioning command and token-source wiring
 - OWS API key for the vault-manager agent
 
 The key should be scoped to:
 
 - exactly one wallet in v1
-- exactly the attached Morpho policy set
 
 ### Step 3. Risk profile survey
 
@@ -490,7 +474,7 @@ Start from `morpho query-vaults --chain base`. Discard vaults that fail:
 - chain != Base
 - asset != USDC
 - below minimum TVL threshold
-- version/status not supported by plugin policy
+- version/status not supported by the plugin
 
 #### Scoring
 
@@ -534,10 +518,6 @@ For each required move:
 
 If any simulation fails, the run should stop and report failure. No fallback heuristics that invent alternate transactions.
 
-### Approval policy
-
-Since `morpho-cli` may emit approval transactions, the OWS executable policy must refuse any approval whose target is not the canonical USDC contract. The spender address itself is trusted because it is produced by the Morpho CLI prepare flow and the runtime never forwards agent-authored calldata to OWS.
-
 ## Agent Behavior Contract
 
 The agent must follow this order every run:
@@ -547,7 +527,7 @@ The agent must follow this order every run:
 3. explain why action is or is not needed
 4. prepare transactions
 5. verify simulation
-6. execute only if policy-compatible
+6. execute only through the provided runtime wrapper
 7. report the result
 
 Required no-op cases:
@@ -555,7 +535,6 @@ Required no-op cases:
 - no USDC balance and no current positions
 - drift below threshold
 - simulation failure
-- OWS policy denial
 - unsupported vault encountered
 
 Required escalation cases:
@@ -694,7 +673,6 @@ It should not assume any single model provider.
 ### Phase 3: Deeper runtime integration
 
 - optional OWS local service mode
-- more advanced policy decoding
 - multi-profile support
 - optional custom OpenClaw harness only if we introduce an external native runtime
 
@@ -710,7 +688,7 @@ The plugin is ready for v1 when all are true:
 6. a cron job is created and visible in `openclaw cron list`
 7. the rebalance loop can no-op cleanly
 8. the rebalance loop can prepare, simulate, and execute an allowed deposit/withdrawal
-9. disallowed transactions are blocked by OWS policy
+9. disallowed transactions are blocked by runtime checks or OWS signing failure
 10. every cron run produces a task/audit trail
 
 ## Open Questions

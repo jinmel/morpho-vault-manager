@@ -7,18 +7,6 @@ type OwsSignTxPayload = {
   transactionHash?: string;
 };
 
-export async function runOwsPolicyCreate(
-  settings: VaultManagerSettings,
-  policyFilePath: string
-): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  const result = await runCommand(settings.owsCommand, ["policy", "create", "--file", policyFilePath]);
-  return {
-    ok: result.code === 0,
-    stdout: result.stdout.trim(),
-    stderr: result.stderr.trim()
-  };
-}
-
 export function buildWalletCreateCommand(settings: VaultManagerSettings, walletName: string): string {
   return `${settings.owsCommand} wallet create --name "${walletName}"`;
 }
@@ -27,9 +15,8 @@ export function buildApiKeyCreateCommand(params: {
   settings: VaultManagerSettings;
   keyName: string;
   walletRef: string;
-  policyId: string;
 }): string {
-  return `${params.settings.owsCommand} key create --name "${params.keyName}" --wallet "${params.walletRef}" --policy "${params.policyId}"`;
+  return `${params.settings.owsCommand} key create --name "${params.keyName}" --wallet "${params.walletRef}"`;
 }
 
 function normalizeHexString(value: unknown): string | undefined {

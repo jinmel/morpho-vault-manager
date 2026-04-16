@@ -35,12 +35,11 @@ The configure flow will:
 
 1. run preflight checks
 2. guide wallet create/import through OWS
-3. write policy artifacts
-4. ask you to create the OWS API key in a separate shell
-5. record the token source as an env var or file reference
-6. generate the dedicated agent workspace and `AGENTS.md`
-7. create the OpenClaw cron job
-8. run a final dry-run validation
+3. ask you to create the OWS API key in a separate shell
+4. record the token source as an env var or file reference
+5. generate the dedicated agent workspace and `AGENTS.md`
+6. create the OpenClaw cron job
+7. run a final dry-run validation
 
 The plugin never stores owner credentials or raw private keys in repo files, prompts, or profile JSON.
 

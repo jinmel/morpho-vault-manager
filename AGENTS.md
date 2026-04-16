@@ -18,7 +18,7 @@ This repository is being built for an agent-first workflow. Treat the repository
 - All signing must go through OWS. Never handle raw private keys in plugin code.
 - The current live wrapper signs in OWS and broadcasts through Base RPC because the documented OWS CLI surface is `ows sign tx`, not a documented `signAndSend` command.
 - Never store owner credentials in repo files, plugin config, or agent prompts.
-- Morpho writes must follow `read -> prepare -> simulate -> policy check -> OWS sign -> broadcast -> verify`.
+- Morpho writes must follow `read -> prepare -> simulate -> OWS sign -> broadcast -> verify`.
 - If a script or test contradicts prose docs, fix the docs or the script so they match. Do not leave split-brain behavior.
 
 ## Execution Discipline
@@ -46,5 +46,5 @@ This repository is being built for an agent-first workflow. Treat the repository
 - Large undocumented helpers
 - Hidden operator steps
 - Unbounded strategy logic
-- Silent fallbacks around policy denials or simulation failures
+- Silent fallbacks around signing failures or simulation failures
 - New product scope without updating the spec first

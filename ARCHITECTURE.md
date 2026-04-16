@@ -15,7 +15,7 @@ The architecture is intentionally narrow. The system is not a general trading bo
 - OWS wallet creation/import and API-key provisioning
 - Morpho data reads and transaction preparation
 - Periodic rebalancing through OpenClaw cron
-- Reporting, auditability, and policy enforcement
+- Reporting and auditability
 
 ### Out of Scope for v1
 
@@ -56,7 +56,6 @@ Responsibilities:
 - wallet lifecycle
 - API-key based agent access
 - API-key provisioning may remain manual/out-of-process in v1 to keep the raw token out of plugin process memory
-- policy enforcement
 - signing
 - future `signAndSend` support when a documented CLI surface exists
 
@@ -80,7 +79,7 @@ The rebalance runtime uses `morpho-cli` directly. The plugin's configure flow ad
 2. Plugin checks for required tools and daemon assumptions.
 3. Plugin offers to register the hosted Morpho MCP server (`https://mcp.morpho.org`) into gateway-wide OpenClaw config via `openclaw mcp set morpho '{"url":"..."}'`. Idempotent: if a `morpho` MCP entry already exists, the plugin leaves it untouched and surfaces the manual reset command.
 4. Plugin creates or imports an OWS wallet.
-5. Plugin emits OWS API-key provisioning instructions with Morpho-specific policy constraints, and the operator completes token creation out-of-process so the raw token never enters plugin process memory.
+5. Plugin emits OWS API-key provisioning instructions, and the operator completes token creation out-of-process so the raw token never enters plugin process memory.
 6. Plugin records the risk profile.
 7. Plugin offers funding guidance and an optional "continue once funded" balance poll against Morpho token reads.
 8. Plugin offers optional model-routing preference for the dedicated agent.
@@ -97,8 +96,8 @@ The rebalance runtime uses `morpho-cli` directly. The plugin's configure flow ad
 4. The agent computes target allocation and drift.
 5. If action is needed, it prepares transactions with Morpho tooling.
 6. The agent verifies simulation success and warnings.
-7. The execution path serializes each prepared transaction, then sends it to OWS for policy-gated signing.
-8. OWS enforces policy before any token-backed decryption.
+7. The execution path serializes each prepared transaction, then sends it to OWS for signing.
+8. OWS signs with its default policy behavior; the plugin does not create or manage custom OWS policy artifacts.
 9. The plugin wrapper broadcasts the signed transaction and waits for receipts.
 10. The run verifies outcomes and reports results.
 
@@ -129,11 +128,10 @@ This is the intended direction for the repo:
 ## Invariants
 
 - The plugin must remain model-agnostic.
-- All live writes must be policy-gated through OWS.
+- All live writes must be signed through OWS.
 - Base-only and USDC-only must be enforceable mechanically, not just mentioned in prompts.
 - The rebalance runtime must only forward `morpho-cli`-prepared transactions to OWS. Agent-authored calldata never reaches signing.
 - Simulation failure is terminal for a run.
-- Policy denial is terminal for a run.
 - Live execution must be auditable from logs and evals.
 
 ## Required Future Modules
@@ -146,7 +144,6 @@ This is the intended direction for the repo:
 ### OWS Adapter
 
 - wallet lookup
-- policy management
 - API key management
 - sign wrapper plus broadcast/receipt verification
 

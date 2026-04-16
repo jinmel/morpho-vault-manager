@@ -12,6 +12,6 @@ log "checking policy harness expectations"
 [[ -f "$ROOT_DIR/docs/openclaw-vault-manager-spec.md" ]] || die "product spec is missing"
 
 grep -q "OWS API token" "$ROOT_DIR/SECURITY.md" || die "security doc no longer states API-token-only model"
-grep -q "Executable OWS Policy" "$ROOT_DIR/SECURITY.md" || die "security doc no longer states executable OWS policy requirement"
+grep -q "OWS default policy behavior" "$ROOT_DIR/SECURITY.md" || die "security doc no longer states the default-OWS-policy model"
 
 log "policy harness checks passed"
