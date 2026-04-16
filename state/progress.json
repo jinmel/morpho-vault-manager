@@ -67,7 +67,7 @@
     {
       "id": "end_to_end_eval_runner",
       "status": "completed",
-      "notes": "CFG-001..CFG-005, WAL-001, CRN-001/002, REB-001..REB-004, REB-008..REB-010, and OBS-001 are executable via scripts/check/evals. POL-001 remains an operator-visible confirmation (no extractable in-process assertion). Live-path scenarios REB-005..REB-007 remain script-driven."
+      "notes": "CFG-001..CFG-005, WAL-001, CRN-001/002, REB-001..REB-004, REB-008..REB-012, SEC-001, and OBS-001 are executable via scripts/check/evals. POL-001 remains an operator-visible confirmation (no extractable in-process assertion). Live-path scenarios REB-005..REB-007 remain script-driven."
     },
     {
       "id": "structured_run_logging",
@@ -113,6 +113,11 @@
       "id": "configure_validation_dry_run",
       "status": "completed",
       "notes": "Configure flow now runs a validation dry-run (Step 8 from spec) after saving the profile. Shows plan status, drift, managed USDC, actions, and persists lastValidationRun onto the profile. Failures are non-blocking with guidance to retry manually."
+    },
+    {
+      "id": "agent_behavior_contract_alignment",
+      "status": "completed",
+      "notes": "AGENTS.md template now lists all spec-required no-op conditions (drift below threshold, simulation failure) and escalation cases (repeated run failures, explicit turnover cap). REB-004 eval implemented to verify stop-on-simulation-failure instructions in generated template. ARCHITECTURE.md updated with drift detection thresholds."
     }
   ],
   "checks": [
@@ -150,7 +155,7 @@
       "id": "eval_runner",
       "path": "scripts/check/evals",
       "status": "pass",
-      "notes": "Fixture-driven configure and rebalance scenarios now cover CFG-001 through CFG-005 plus REB-001 through REB-004 and REB-008 through REB-010 with injected deps and pass locally."
+      "notes": "Fixture-driven configure and rebalance scenarios now cover CFG-001 through CFG-005, REB-001 through REB-004, REB-008 through REB-012, SEC-001, and OBS-001 with injected deps and pass locally."
     },
     {
       "id": "plugin_typecheck",

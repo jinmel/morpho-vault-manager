@@ -29,6 +29,7 @@ import {
   type PlanReadDeps,
   type PlanResult
 } from "../lib/rebalance.js";
+import { renderAgentInstructions } from "../lib/template.js";
 import type { RiskProfileId, VaultManagerProfile, VaultManagerSettings } from "../lib/types.js";
 
 type VaultFixture = {
@@ -627,6 +628,48 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
       settings.openclawCommand = "openclaw-nonexistent-binary-for-eval";
       const reachable = await openclawGatewayIsReachable(settings);
       assertFalse("gatewayReachable", reachable);
+    }
+  },
+  {
+    id: "REB-004",
+    description: "Agent instructions enforce stop on first simulation failure",
+    async run() {
+      const riskPreset = RISK_PRESETS.balanced;
+      const profile: VaultManagerProfile = {
+        profileId: "eval-reb004",
+        chain: "base",
+        walletRef: "eval-wallet",
+        walletAddress: getAddress("0x1111111111111111111111111111111111111111"),
+        walletMode: "existing",
+        riskProfile: "balanced",
+        tokenEnvVar: "OWS_EVAL_TOKEN",
+        usdcAddress: BASE_USDC_ADDRESS,
+        agentId: "vault-manager-eval",
+        workspaceDir: "/tmp/eval-reb004",
+        cronJobName: "Eval REB-004",
+        cronExpression: "0 */6 * * *",
+        timezone: "UTC",
+        notifications: "none",
+        cronEnabled: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        riskPreset
+      };
+
+      const instructions = renderAgentInstructions(profile);
+      assertTrue(
+        "contains stop-on-failure instruction",
+        instructions.includes("simulation failed, stop immediately")
+      );
+      assertTrue(
+        "contains reject-on-simulation-failure rule",
+        instructions.includes("Reject execution if simulation fails")
+      );
+      assertTrue(
+        "no-op section lists simulation failure",
+        instructions.includes("Simulation failure") &&
+          instructions.indexOf("No-Op Conditions") < instructions.indexOf("Simulation failure")
+      );
     }
   },
   {

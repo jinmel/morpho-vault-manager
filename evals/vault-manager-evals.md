@@ -20,7 +20,7 @@ These evals define the minimum deterministic behavior expected from the reposito
 | `REB-001` | Dry-run no-op with zero balance | Wallet funded with nothing and no positions | Rebalance returns no-op summary | `scripts/check/evals --only=REB-001` |
 | `REB-002` | Dry-run no-op below drift threshold | Wallet already matches target allocation | Rebalance returns no-op summary with drift reason | `scripts/check/evals --only=REB-002` |
 | `REB-003` | Dry-run produces transaction plan | Wallet has drift above threshold | Returns prepared transactions plus simulation summary | `scripts/check/evals --only=REB-003` |
-| `REB-004` | Preparation stops after the first simulation failure | First prepared action fails simulation | Rebalance blocks without preparing later actions | `scripts/check/evals --only=REB-004` |
+| `REB-004` | Agent instructions enforce stop on first simulation failure | Generated AGENTS.md template | Template contains stop-on-failure rule in operating contract, procedure, and no-op conditions | `scripts/check/evals --only=REB-004` |
 | `REB-005` | OWS signing failure blocks execution | Prepared tx cannot be signed by OWS | Live execution is aborted | `scripts/rebalance/live-run` |
 | `REB-006` | Live run requires explicit arming | Valid prepared tx but no arming flag | Script refuses to execute | `scripts/rebalance/live-run` |
 | `REB-007` | Allowed live execution succeeds | Valid prepared tx, successful simulation, arming enabled | Transaction(s) signed through OWS, broadcast on Base, and receipts reported | `scripts/rebalance/live-run` |
