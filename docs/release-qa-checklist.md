@@ -40,6 +40,7 @@ Use this checklist on the candidate package that will be published. The goal is 
 - [ ] Model selection persists into the generated agent configuration.
 - [ ] The generated workspace contains `AGENTS.md` with Base-only, USDC-only, and OWS-only signing rules.
 - [ ] The configure flow creates the dedicated agent successfully.
+- [ ] The configure flow shows the chosen cron delivery target and defaults to `last` when no explicit target is pinned.
 - [ ] The configure flow creates the cron job successfully.
 - [ ] The final validation run completes as a dry run and persists its result.
 

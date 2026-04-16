@@ -22,6 +22,7 @@ After install, an OpenClaw user can run a single configure flow that:
 4. guides the user to fund the wallet with USDC on Base
 5. creates a dedicated OpenClaw agent workspace with standing instructions
 6. creates an OpenClaw cron job that periodically rebalances the wallet
+7. stores how cron summaries should be delivered for that specific managed agent
 
 The end state is not a general DeFi copilot. It is a **narrow vault-management agent** with a small, auditable operating envelope.
 
@@ -90,7 +91,8 @@ The configure flow uses `clack` and walks the user through:
 5. deposit instructions
 6. model/agent prompt selection
 7. cron schedule creation
-8. dry-run or live rebalance test
+8. cron delivery target selection
+9. dry-run or live rebalance test
 
 ### Ongoing Use
 
@@ -245,6 +247,8 @@ Recommended shape:
 - explicit `--message`
 - optional `--model` override
 - `--announce` when the user wants notifications
+- default `--channel last` for seamless delivery back to the operator's most recent OpenClaw chat route
+- optional explicit `--channel telegram --to ...` for per-agent pinned delivery targets
 
 Reasons:
 
@@ -254,6 +258,15 @@ Reasons:
 - delivery, retries, and audit trail already exist
 
 The plugin must not build its own scheduler.
+
+Cron delivery configuration should be stored on the plugin's per-agent profile, not in shared global plugin state, because different vault-manager agents may need to report to different Telegram groups/topics or other channels.
+
+Recommended behavior:
+
+- if the operator chooses notifications and no explicit target is pinned, create the cron job with `--announce --channel last`
+- if the operator wants a fixed Telegram destination, discover candidate groups/topics via `openclaw directory groups list --channel telegram` and store the selected target on that profile
+- if multiple Telegram accounts exist, store the chosen OpenClaw channel account id alongside the target
+- if the operator chooses `none`, create the cron job with `--no-deliver`
 
 ## Security Model
 
@@ -422,7 +435,18 @@ openclaw cron add \
   --session isolated \
   --agent vault-manager \
   --message "Execute the Morpho vault rebalance program in AGENTS.md for the configured wallet. Use live state, simulate before execution, and report actions or no-op reasons." \
-  --announce
+  --announce \
+  --channel last
+```
+
+If the operator pins a Telegram delivery destination for this specific profile, the plugin should instead create or edit the cron job with explicit delivery flags such as:
+
+```bash
+openclaw cron edit <job-id> \
+  --announce \
+  --channel telegram \
+  --account default \
+  --to "-1001234567890:topic:42"
 ```
 
 Default cadence for v1:
@@ -564,7 +588,11 @@ The plugin should persist a small machine-readable profile file, for example:
   "maxTurnoverUsd": 10000,
   "cashBufferUsd": 100,
   "agentId": "vault-manager",
-  "cronJobName": "Morpho Vault Rebalance"
+  "cronJobName": "Morpho Vault Rebalance",
+  "notifications": "announce",
+  "deliveryChannel": "last",
+  "deliveryTo": null,
+  "deliveryAccountId": null
 }
 ```
 
@@ -595,6 +623,8 @@ Suggested plugin config shape:
           morphoCliCommand: "bunx",
           morphoCliArgsPrefix: ["@morpho-org/cli"],
           defaultChain: "base",
+          defaultDeliveryMode: "announce",
+          defaultDeliveryChannel: "last",
           dryRunByDefault: false
         }
       }

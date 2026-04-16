@@ -247,6 +247,9 @@ async function materializeProfile(
     cronExpression: "0 */6 * * *",
     timezone: "UTC",
     notifications: "none",
+    deliveryChannel: undefined,
+    deliveryTo: undefined,
+    deliveryAccountId: undefined,
     cronEnabled: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -298,6 +301,8 @@ function makeTempSettings(): VaultManagerSettings {
     defaultChain: "base",
     defaultCron: "0 */6 * * *",
     defaultTimezone: "UTC",
+    defaultDeliveryMode: "announce",
+    defaultDeliveryChannel: "last",
     defaultTokenEnvVar: "OWS_MORPHO_VAULT_MANAGER_TOKEN",
     defaultTokenSource: {
       kind: "env",
@@ -624,6 +629,16 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
       assertEqual("risk id", parsed.id, "balanced");
       assertEqual("risk maxVaults", parsed.maxVaults, 3);
       assertEqual("risk apy weight", parsed.scoreWeights.apy, 1);
+    }
+  },
+  {
+    id: "CFG-005",
+    description: "Cron delivery defaults resolve deterministically",
+    async run() {
+      const settings = makeTempSettings();
+      assertEqual("default delivery mode", settings.defaultDeliveryMode, "announce");
+      assertEqual("default delivery channel", settings.defaultDeliveryChannel, "last");
+      assertEqual("default delivery to", settings.defaultDeliveryTo, undefined);
     }
   },
   {

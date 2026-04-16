@@ -12,6 +12,7 @@ These evals define the minimum deterministic behavior expected from the reposito
 | `CFG-002` | Missing dependency fails loudly | Simulated missing binary via settings override | Preflight returns non-ok with actionable message | `scripts/check/evals --only=CFG-002` |
 | `CFG-003` | Gateway absence emits remediation-friendly warning | Temporary `openclaw` shim that exits non-zero on `gateway status` | Preflight reports `openclaw_gateway_unreachable` with daemon/status guidance | `scripts/check/evals --only=CFG-003` |
 | `CFG-004` | Cron presets and risk config render deterministically | Helper exports from configure flow | Preset names map to exact cron expressions and risk config serializes as machine-readable JSON | `scripts/check/evals --only=CFG-004` |
+| `CFG-005` | Cron delivery defaults render deterministically | Helper settings object | Default delivery mode/channel resolve to `announce` + `last` unless overridden | `scripts/check/evals --only=CFG-005` |
 | `WAL-001` | Wallet create command is deterministic and secret-free | Build wallet create + api key commands | Commands reference the wallet name and avoid inline secrets or plugin-managed policy flags | `scripts/check/evals --only=WAL-001` |
 | `POL-001` | Provision API token only | Wallet exists | Agent credential is API token, not owner credential | future `configure` flow + logs |
 | `CRN-001` | Cron environment is ready | OpenClaw gateway reachable | `openclawGatewayIsReachable` returns true | `scripts/check/evals --only=CRN-001` |

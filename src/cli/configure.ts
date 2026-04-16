@@ -13,7 +13,9 @@ import {
   enableCronJob,
   ensureAgent,
   installSkill,
+  listConfiguredTelegramAccounts,
   listCronJobs,
+  listTelegramGroups,
   runCronJobNow,
   upsertCronJob
 } from "../lib/openclaw.js";
@@ -39,6 +41,7 @@ type ConfigureContext = {
 
 type CronSchedulePresetId = "hourly" | "every6Hours" | "daily" | "weekdays";
 type CronScheduleSelection = CronSchedulePresetId | "custom";
+type DeliveryTargetSelection = "last" | "telegram" | "manual";
 
 type CronSchedulePreset = {
   id: CronSchedulePresetId;
@@ -133,6 +136,236 @@ export function agentIdForProfile(settings: VaultManagerSettings, profileId: str
 
 export function workspaceDirForAgent(settings: VaultManagerSettings, agentId: string): string {
   return path.join(settings.workspaceRoot, `workspace-${agentId}`);
+}
+
+function describeDeliveryTarget(target: {
+  notifications: "announce" | "none";
+  deliveryChannel?: string;
+  deliveryTo?: string;
+  deliveryAccountId?: string;
+}): string {
+  if (target.notifications !== "announce") {
+    return "Internal only (no delivery)";
+  }
+  if ((target.deliveryChannel ?? "last") === "last") {
+    return "Announce to OpenClaw last route";
+  }
+
+  const pieces = [target.deliveryChannel];
+  if (target.deliveryTo) {
+    pieces.push(target.deliveryTo);
+  }
+  if (target.deliveryAccountId) {
+    pieces.push(`account ${target.deliveryAccountId}`);
+  }
+  return pieces.join(" / ");
+}
+
+async function promptTelegramDeliveryTarget(
+  settings: VaultManagerSettings,
+  existing?: { deliveryTo?: string; deliveryAccountId?: string }
+): Promise<{ deliveryChannel: string; deliveryTo: string; deliveryAccountId?: string }> {
+  const accounts = await listConfiguredTelegramAccounts(settings);
+  const defaultAccountId = existing?.deliveryAccountId ?? settings.defaultDeliveryAccountId;
+  let accountId =
+    accounts.length === 1 ? accounts[0] : accounts.includes(defaultAccountId ?? "") ? defaultAccountId : undefined;
+
+  if (accounts.length > 1) {
+    accountId = requiredString(
+      await p.select({
+        message: "Telegram account",
+        initialValue: accountId,
+        options: accounts.map((candidate) => ({
+          value: candidate,
+          label: candidate,
+          hint: "Configured Telegram account"
+        }))
+      }),
+      "telegram account"
+    );
+  }
+
+  const discoveredTargets = await listTelegramGroups(settings, accountId);
+  const manualEntryValue = "__manual__";
+  let deliveryTo: string;
+
+  if (discoveredTargets.length > 0) {
+    const selection = requiredString(
+      await p.select({
+        message: "Telegram delivery target",
+        initialValue:
+          discoveredTargets.some((target) => target.id === existing?.deliveryTo)
+            ? existing?.deliveryTo
+            : undefined,
+        options: [
+          ...discoveredTargets.map((target) => ({
+            value: target.id,
+            label: target.label,
+            hint: target.id
+          })),
+          {
+            value: manualEntryValue,
+            label: "Manual target",
+            hint: "Enter a chat id or -100...:topic:<id> yourself."
+          }
+        ]
+      }),
+      "telegram delivery target"
+    );
+
+    deliveryTo =
+      selection === manualEntryValue
+        ? requiredString(
+            await p.text({
+              message: "Telegram chat id or topic target",
+              placeholder: "-1001234567890:topic:42",
+              defaultValue: existing?.deliveryTo
+            }),
+            "telegram delivery target"
+          )
+        : selection;
+  } else {
+    await p.note(
+      [
+        "No Telegram groups/topics were discovered from the OpenClaw directory.",
+        "You can still enter a Telegram chat id or topic target manually."
+      ].join("\n"),
+      "Telegram Delivery"
+    );
+    deliveryTo = requiredString(
+      await p.text({
+        message: "Telegram chat id or topic target",
+        placeholder: "-1001234567890:topic:42",
+        defaultValue: existing?.deliveryTo
+      }),
+      "telegram delivery target"
+    );
+  }
+
+  return {
+    deliveryChannel: "telegram",
+    deliveryTo,
+    deliveryAccountId: accountId
+  };
+}
+
+async function promptManualDeliveryTarget(
+  existing?: { deliveryChannel?: string; deliveryTo?: string; deliveryAccountId?: string }
+): Promise<{ deliveryChannel: string; deliveryTo?: string; deliveryAccountId?: string }> {
+  const deliveryChannel = requiredString(
+    await p.text({
+      message: "Delivery channel",
+      placeholder: "telegram",
+      defaultValue:
+        existing?.deliveryChannel && existing.deliveryChannel !== "last"
+          ? existing.deliveryChannel
+          : undefined
+    }),
+    "delivery channel"
+  );
+
+  if (deliveryChannel === "last") {
+    return { deliveryChannel: "last" };
+  }
+
+  const deliveryTo = requiredString(
+    await p.text({
+      message: "Delivery target",
+      placeholder: "-1001234567890:topic:42",
+      defaultValue: existing?.deliveryTo
+    }),
+    "delivery target"
+  );
+
+  const deliveryAccountId = optionalString(
+    await p.text({
+      message: "Delivery account id (optional)",
+      placeholder: "default",
+      defaultValue: existing?.deliveryAccountId
+    })
+  );
+
+  return {
+    deliveryChannel,
+    deliveryTo,
+    deliveryAccountId: deliveryAccountId || undefined
+  };
+}
+
+async function promptCronDelivery(settings: VaultManagerSettings, existing?: VaultManagerProfile): Promise<{
+  notifications: "announce" | "none";
+  deliveryChannel?: string;
+  deliveryTo?: string;
+  deliveryAccountId?: string;
+}> {
+  const notifications = requiredString(
+    await p.select({
+      message: "Cron delivery mode",
+      initialValue: existing?.notifications ?? settings.defaultDeliveryMode,
+      options: [
+        { value: "announce", label: "Announce run summaries", hint: "Post run summaries back through OpenClaw." },
+        { value: "none", label: "No delivery", hint: "Keep cron runs internal only." }
+      ]
+    }),
+    "cron delivery mode"
+  ) as "announce" | "none";
+
+  if (notifications === "none") {
+    return { notifications };
+  }
+
+  const existingSelection: DeliveryTargetSelection =
+    existing?.deliveryChannel === "telegram"
+      ? "telegram"
+      : existing?.deliveryChannel && existing.deliveryChannel !== "last"
+        ? "manual"
+        : "last";
+  const defaultSelection: DeliveryTargetSelection =
+    settings.defaultDeliveryChannel && settings.defaultDeliveryChannel !== "last" ? "manual" : "last";
+
+  const selection = requiredString(
+    await p.select({
+      message: "Cron delivery target",
+      initialValue: existing ? existingSelection : defaultSelection,
+      options: [
+        {
+          value: "last",
+          label: "Use OpenClaw last route",
+          hint: "Seamless default. Reuse the last chat destination OpenClaw delivered to."
+        },
+        {
+          value: "telegram",
+          label: "Select Telegram target",
+          hint: "Discover Telegram groups/topics from OpenClaw and store one on this profile."
+        },
+        {
+          value: "manual",
+          label: "Manual target",
+          hint: "Enter a delivery channel and destination yourself."
+        }
+      ]
+    }),
+    "cron delivery target"
+  ) as DeliveryTargetSelection;
+
+  if (selection === "last") {
+    return {
+      notifications,
+      deliveryChannel: "last"
+    };
+  }
+
+  if (selection === "telegram") {
+    return {
+      notifications,
+      ...(await promptTelegramDeliveryTarget(settings, existing))
+    };
+  }
+
+  return {
+    notifications,
+    ...(await promptManualDeliveryTarget(existing))
+  };
 }
 
 async function preflight(settings: VaultManagerSettings): Promise<void> {
@@ -665,18 +898,7 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
   );
 
   const modelPreference = await promptModelSelection(existing.profile?.modelPreference);
-
-  const notifications = requiredString(
-    await p.select({
-      message: "Cron delivery mode",
-      initialValue: existing.profile?.notifications ?? "announce",
-      options: [
-        { value: "announce", label: "Announce run summaries", hint: "Post run summaries back through OpenClaw." },
-        { value: "none", label: "No delivery", hint: "Keep cron runs internal only." }
-      ]
-    }),
-    "cron delivery mode"
-  ) as "announce" | "none";
+  const delivery = await promptCronDelivery(settings, existing.profile ?? undefined);
 
   const cronExpression = await promptCronSchedule(settings, existing.profile?.cronExpression, settings.defaultCron);
 
@@ -693,6 +915,7 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     [
       `Schedule: ${describeCronSchedule(cronExpression)}`,
       `Timezone: ${timezone}`,
+      `Delivery: ${describeDeliveryTarget(delivery)}`,
       `Machine-readable cron expression: ${cronExpression}`
     ].join("\n"),
     "Cron Schedule"
@@ -790,7 +1013,10 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     cronJobName: existing.profile?.cronJobName ?? `${settings.baseCronName} (${profileId})`,
     cronExpression,
     timezone,
-    notifications,
+    notifications: delivery.notifications,
+    deliveryChannel: delivery.deliveryChannel,
+    deliveryTo: delivery.deliveryTo,
+    deliveryAccountId: delivery.deliveryAccountId,
     cronEnabled,
     createdAt: existing.profile?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -867,6 +1093,7 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
       `Cron job: ${profile.cronJobId}`,
       `Wallet mode: ${profile.walletMode}`,
       `Schedule: ${describeCronSchedule(profile.cronExpression)}`,
+      `Delivery: ${describeDeliveryTarget(profile)}`,
       `Risk config: ${formatRiskPresetConfig(profile.riskPreset)}`,
       `Token source: ${tokenSourceDescription}`,
       `Model: ${modelPreference ?? "(default OpenClaw routing)"}`
@@ -932,6 +1159,18 @@ export async function showStatus(settings: VaultManagerSettings, profileId: stri
     cronKnownToGateway: Boolean(cronJob),
     cronEnabled: profile.cronEnabled,
     notifications: profile.notifications,
+    deliveryChannel:
+      profile.notifications === "announce"
+        ? profile.deliveryChannel ?? settings.defaultDeliveryChannel ?? "last"
+        : null,
+    deliveryTo:
+      profile.notifications === "announce"
+        ? profile.deliveryTo ?? settings.defaultDeliveryTo ?? null
+        : null,
+    deliveryAccountId:
+      profile.notifications === "announce"
+        ? profile.deliveryAccountId ?? settings.defaultDeliveryAccountId ?? null
+        : null,
     lastFundedCheckAt: profile.lastFundedCheckAt ?? null,
     lastFundedUsdc: profile.lastFundedUsdc ?? null,
     lastValidationRun: profile.lastValidationRun ?? null,
@@ -956,6 +1195,12 @@ export async function showStatus(settings: VaultManagerSettings, profileId: stri
       `Workspace: ${summary.workspaceDir}`,
       `Cron job: ${summary.cronJobId ?? "missing"} (${summary.cronKnownToGateway ? "known" : "not found"})`,
       `Cron enabled: ${summary.cronEnabled ? "yes" : "no"}`,
+      `Delivery: ${describeDeliveryTarget({
+        notifications: profile.notifications,
+        deliveryChannel: summary.deliveryChannel ?? undefined,
+        deliveryTo: summary.deliveryTo ?? undefined,
+        deliveryAccountId: summary.deliveryAccountId ?? undefined
+      })}`,
       `Last funded check: ${summary.lastFundedCheckAt ?? "never"}${
         summary.lastFundedUsdc ? ` (${summary.lastFundedUsdc} USDC)` : ""
       }`,

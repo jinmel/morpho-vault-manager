@@ -14,6 +14,10 @@ export type VaultManagerSettings = {
   defaultChain: "base";
   defaultCron: string;
   defaultTimezone: string;
+  defaultDeliveryMode: "announce" | "none";
+  defaultDeliveryChannel?: string;
+  defaultDeliveryTo?: string;
+  defaultDeliveryAccountId?: string;
   defaultTokenEnvVar: string;
   defaultTokenSource: TokenSource;
   baseAgentId: string;
@@ -57,6 +61,9 @@ export type VaultManagerProfile = {
   cronExpression: string;
   timezone: string;
   notifications: "announce" | "none";
+  deliveryChannel?: string;
+  deliveryTo?: string;
+  deliveryAccountId?: string;
   cronEnabled: boolean;
   createdAt: string;
   updatedAt: string;

@@ -38,8 +38,9 @@ The configure flow will:
 3. ask you to create the OWS API key in a separate shell
 4. record the token source as an env var or file reference
 5. generate the dedicated agent workspace and `AGENTS.md`
-6. create the OpenClaw cron job
-7. run a final dry-run validation
+6. choose how cron results are delivered (`last` route by default, or a pinned target)
+7. create the OpenClaw cron job
+8. run a final dry-run validation
 
 The plugin never stores owner credentials or raw private keys in repo files, prompts, or profile JSON.
 

@@ -37,6 +37,7 @@ Responsibilities:
 - create/update the dedicated OpenClaw agent
 - write standing instructions into the agent workspace
 - create and manage cron jobs
+- discover or persist per-profile cron delivery targets
 
 ### 2. OpenClaw Agent Runtime
 
@@ -84,8 +85,9 @@ The rebalance runtime uses `morpho-cli` directly. Morpho skill content is instal
 8. Plugin offers optional model-routing preference for the dedicated agent.
 9. Plugin creates a dedicated OpenClaw agent workspace.
 10. Plugin writes `AGENTS.md` standing orders into that workspace.
-11. Plugin creates an isolated OpenClaw cron job for periodic execution.
-12. Plugin runs a final validation dry-run against live Morpho state and persists the outcome in the profile.
+11. Plugin configures cron delivery for that profile: default `channel=last`, or an explicit Telegram target discovered from OpenClaw directory surfaces.
+12. Plugin creates an isolated OpenClaw cron job for periodic execution.
+13. Plugin runs a final validation dry-run against live Morpho state and persists the outcome in the profile.
 
 ### Rebalance Run
 
@@ -166,6 +168,7 @@ This is the intended direction for the repo:
 - agent bootstrap
 - workspace file generation
 - cron management
+- delivery-target discovery (`channels list`, `directory groups list`)
 - reporting hooks
 
 ## Design Bias

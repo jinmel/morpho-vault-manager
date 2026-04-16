@@ -71,8 +71,15 @@ Morpho protocol interaction is provided via the `morpho-cli` workspace skill (fr
 - Do not write owner credentials into OpenClaw prompts or workspace files.
 - API tokens must be resolved through the configured token source (`env` or `file`), never hardcoded in profile JSON or plugin config.
 - `file` sources are intended for mounted-secret setups (Docker/k8s/systemd EnvironmentFile). File contents are read at execution time and never copied into the profile.
-- Profile files may contain public addresses, wallet IDs, thresholds, cron metadata, and the token source descriptor (kind + identifier), never the token value itself.
+- Profile files may contain public addresses, wallet IDs, thresholds, cron metadata, delivery targets/account ids, and the token source descriptor (kind + identifier), never the token value itself.
 - The configure flow should emit the OWS API-key provisioning command and then accept only the resulting token source descriptor, not the raw token.
+
+## Cron Delivery
+
+- Cron delivery routing is public operational metadata, not secret material.
+- A profile may store `deliveryChannel`, `deliveryTo`, and `deliveryAccountId` so each managed agent can announce to a different chat destination.
+- The default delivery route should be OpenClaw's `last` channel target unless the operator pins an explicit destination.
+- Discovery of Telegram groups/topics should use OpenClaw CLI directory surfaces only; the plugin must not scrape or persist unrelated chat history to infer a target.
 
 ## Execution Guardrails
 

@@ -43,6 +43,11 @@ export function resolveVaultManagerSettings(pluginConfig?: Record<string, unknow
       stringValue(config.defaultTimezone) ??
       Intl.DateTimeFormat().resolvedOptions().timeZone ??
       "UTC",
+    defaultDeliveryMode:
+      stringValue(config.defaultDeliveryMode) === "none" ? "none" : "announce",
+    defaultDeliveryChannel: stringValue(config.defaultDeliveryChannel) ?? "last",
+    defaultDeliveryTo: stringValue(config.defaultDeliveryTo),
+    defaultDeliveryAccountId: stringValue(config.defaultDeliveryAccountId),
     defaultTokenEnvVar: stringValue(config.defaultTokenEnvVar) ?? "OWS_MORPHO_VAULT_MANAGER_TOKEN",
     defaultTokenSource: tokenSourceFromPluginConfig(
       config.apiKey,

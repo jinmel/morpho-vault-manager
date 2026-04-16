@@ -43,6 +43,8 @@ function makeSandboxSettings(root: string): VaultManagerSettings {
     defaultChain: "base",
     defaultCron: "0 */6 * * *",
     defaultTimezone: "UTC",
+    defaultDeliveryMode: "announce",
+    defaultDeliveryChannel: "last",
     defaultTokenEnvVar: "OWS_MORPHO_VAULT_MANAGER_TOKEN",
     defaultTokenSource: {
       kind: "env",
@@ -76,6 +78,9 @@ async function makeSandboxProfile(
     cronExpression: "0 */6 * * *",
     timezone: "UTC",
     notifications: "none",
+    deliveryChannel: undefined,
+    deliveryTo: undefined,
+    deliveryAccountId: undefined,
     cronEnabled: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

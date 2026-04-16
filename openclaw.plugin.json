@@ -45,6 +45,23 @@
         "type": "string",
         "description": "Default IANA timezone for cron schedules."
       },
+      "defaultDeliveryMode": {
+        "type": "string",
+        "enum": ["announce", "none"],
+        "description": "Default cron delivery mode for new vault-manager profiles."
+      },
+      "defaultDeliveryChannel": {
+        "type": "string",
+        "description": "Default cron delivery channel. Use \"last\" to route through OpenClaw's last-known chat target."
+      },
+      "defaultDeliveryTo": {
+        "type": "string",
+        "description": "Default cron delivery destination for explicit delivery targets."
+      },
+      "defaultDeliveryAccountId": {
+        "type": "string",
+        "description": "Optional default OpenClaw channel account id for multi-account delivery."
+      },
       "defaultTokenEnvVar": {
         "type": "string",
         "description": "Environment variable name expected to hold the OWS API token."

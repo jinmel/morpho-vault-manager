@@ -1,6 +1,100 @@
 import { runCommand } from "./shell.js";
 import type { VaultManagerProfile, VaultManagerSettings } from "./types.js";
 
+type TelegramGroupTarget = {
+  id: string;
+  label: string;
+};
+
+function parseJson<T>(value: string): T | null {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function stringField(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (isNonEmptyString(value)) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function normalizeTelegramGroupEntry(entry: unknown): TelegramGroupTarget | null {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const record = entry as Record<string, unknown>;
+  const id =
+    stringField(record, ["id", "groupId", "target", "peerId", "chatId"]) ??
+    (typeof record.topicId === "number" && isNonEmptyString(record.chatId)
+      ? `${record.chatId}:topic:${record.topicId}`
+      : undefined);
+  if (!id) {
+    return null;
+  }
+
+  const label =
+    stringField(record, ["name", "title", "displayName", "label"]) ??
+    (typeof record.topicId === "number" && isNonEmptyString(record.chatId)
+      ? `${record.chatId} topic ${record.topicId}`
+      : id);
+
+  return { id, label };
+}
+
+export function resolveCronDelivery(profile: VaultManagerProfile, settings: VaultManagerSettings): {
+  mode: "announce" | "none";
+  channel?: string;
+  to?: string;
+  accountId?: string;
+} {
+  if (profile.notifications !== "announce") {
+    return { mode: "none" };
+  }
+
+  const channel = profile.deliveryChannel ?? settings.defaultDeliveryChannel ?? "last";
+  const to = channel === "last" ? undefined : profile.deliveryTo ?? settings.defaultDeliveryTo;
+  const accountId = channel === "last" ? undefined : profile.deliveryAccountId ?? settings.defaultDeliveryAccountId;
+
+  if (channel !== "last" && !to) {
+    throw new Error(
+      `Profile ${profile.profileId} is configured for announce delivery but is missing a destination target.`
+    );
+  }
+
+  if (!channel && to) {
+    throw new Error(
+      `Profile ${profile.profileId} has a delivery target but no delivery channel configured.`
+    );
+  }
+
+  return { mode: "announce", channel, to, accountId };
+}
+
+export function buildCronDeliveryArgs(profile: VaultManagerProfile, settings: VaultManagerSettings): string[] {
+  const delivery = resolveCronDelivery(profile, settings);
+  if (delivery.mode === "none") {
+    return ["--no-deliver"];
+  }
+
+  return [
+    "--announce",
+    ...(delivery.channel ? ["--channel", delivery.channel] : []),
+    ...(delivery.accountId ? ["--account", delivery.accountId] : []),
+    ...(delivery.to ? ["--to", delivery.to] : [])
+  ];
+}
+
 export async function openclawGatewayIsReachable(settings: VaultManagerSettings): Promise<boolean> {
   const result = await runCommand(settings.openclawCommand, ["gateway", "status"]);
   return result.code === 0;
@@ -62,7 +156,7 @@ export async function upsertCronJob(params: {
       "Report actions taken, receipts, or explicit no-op/block reasons."
     ].join(" "),
     "--light-context",
-    ...(params.profile.notifications === "announce" ? ["--announce"] : ["--no-deliver"]),
+    ...buildCronDeliveryArgs(params.profile, params.settings),
     ...(params.profile.cronEnabled ? [] : params.profile.cronJobId ? ["--disable"] : ["--disabled"])
   ];
 
@@ -93,6 +187,53 @@ export async function upsertCronJob(params: {
     stdout: result.stdout.trim(),
     stderr: result.stderr.trim()
   };
+}
+
+export async function listConfiguredTelegramAccounts(settings: VaultManagerSettings): Promise<string[]> {
+  const result = await runCommand(settings.openclawCommand, ["channels", "list", "--json"]);
+  if (result.code !== 0) {
+    return [];
+  }
+
+  const parsed = parseJson<Record<string, unknown>>(result.stdout);
+  const chat = parsed?.chat;
+  if (!chat || typeof chat !== "object") {
+    return [];
+  }
+
+  const telegram = (chat as Record<string, unknown>).telegram;
+  if (!Array.isArray(telegram)) {
+    return [];
+  }
+
+  return telegram.filter(isNonEmptyString).map((value) => value.trim());
+}
+
+export async function listTelegramGroups(
+  settings: VaultManagerSettings,
+  accountId?: string
+): Promise<TelegramGroupTarget[]> {
+  const result = await runCommand(settings.openclawCommand, [
+    "directory",
+    "groups",
+    "list",
+    "--channel",
+    "telegram",
+    ...(accountId ? ["--account", accountId] : []),
+    "--json"
+  ]);
+  if (result.code !== 0) {
+    return [];
+  }
+
+  const parsed = parseJson<unknown>(result.stdout);
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  return parsed
+    .map(normalizeTelegramGroupEntry)
+    .filter((entry): entry is TelegramGroupTarget => entry !== null);
 }
 
 export async function enableCronJob(settings: VaultManagerSettings, cronJobId: string): Promise<boolean> {
