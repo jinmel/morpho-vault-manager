@@ -118,3 +118,43 @@ export function parseOwsWalletCreateOutput(
 
   return { walletRef, walletAddress, mnemonic };
 }
+
+export type ParsedWalletListEntry = {
+  name: string;
+  walletRef: string;
+  evmAddress?: `0x${string}`;
+};
+
+export function parseOwsWalletList(stdout: string): ParsedWalletListEntry[] {
+  const text = stdout.replace(/\r\n/g, "\n");
+  const entries: ParsedWalletListEntry[] = [];
+
+  const blockRegex =
+    /(^|\n)\s*([A-Za-z0-9][\w.-]*)\s+\(?([0-9a-fA-F-]{8,})\)?[^\n]*\n((?:\s+eip155:\d+\s+0x[0-9a-fA-F]{40}[^\n]*\n?)+)/g;
+
+  let match: RegExpExecArray | null;
+  while ((match = blockRegex.exec(text)) !== null) {
+    const name = match[2];
+    const walletRef = match[3];
+    const addrMatch = match[4].match(/eip155:\d+\s+(0x[0-9a-fA-F]{40})/);
+    let evmAddress: `0x${string}` | undefined;
+    if (addrMatch) {
+      try {
+        evmAddress = getAddress(addrMatch[1]);
+      } catch {
+        evmAddress = undefined;
+      }
+    }
+    entries.push({ name, walletRef, evmAddress });
+  }
+
+  if (entries.length === 0) {
+    const lineRegex = /^\s*([A-Za-z0-9][\w.-]*)\s+([0-9a-fA-F-]{8,})\b/gm;
+    let lm: RegExpExecArray | null;
+    while ((lm = lineRegex.exec(text)) !== null) {
+      entries.push({ name: lm[1], walletRef: lm[2] });
+    }
+  }
+
+  return entries;
+}

@@ -24,7 +24,10 @@ import type {
   MorphoVaultPosition
 } from "../lib/morpho.js";
 import { saveProfile } from "../lib/profile.js";
-import { parseOwsWalletCreateOutput } from "../lib/ows-bootstrap.js";
+import {
+  parseOwsWalletCreateOutput,
+  parseOwsWalletList
+} from "../lib/ows-bootstrap.js";
 import {
   runPlan,
   type PlanReadDeps,
@@ -753,6 +756,31 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
     async run() {
       const parsed = parseOwsWalletCreateOutput("nothing to parse");
       assertTrue("returned error", "error" in parsed);
+    }
+  },
+  {
+    id: "OBS-BOOT-PARSER-004",
+    description: "parseOwsWalletList extracts names and wallet refs",
+    async run() {
+      const stdout = [
+        "morpho-vault-manager  3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff",
+        "  eip155:1     0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
+        "  eip155:8453  0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
+        "",
+        "other-wallet  01234567-89ab-cdef-0123-456789abcdef",
+        "  eip155:1     0x0000000000000000000000000000000000000001"
+      ].join("\n");
+      const wallets = parseOwsWalletList(stdout);
+      assertEqual("count", wallets.length, 2);
+      assertEqual("first name", wallets[0].name, "morpho-vault-manager");
+      assertEqual("first ref", wallets[0].walletRef, "3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff");
+    }
+  },
+  {
+    id: "OBS-BOOT-PARSER-005",
+    description: "parseOwsWalletList handles empty output",
+    async run() {
+      assertEqual("empty", parseOwsWalletList("").length, 0);
     }
   },
 ];
