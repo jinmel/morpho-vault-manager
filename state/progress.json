@@ -3,7 +3,7 @@
   "project": "openclaw-vault-manager",
   "lastUpdated": "2026-04-16",
   "overallStatus": "ready_for_review",
-  "currentFocus": "all_next_actions_resolved",
+  "currentFocus": "v1_feature_complete",
   "currentPlan": {
     "id": "bootstrap-harness",
     "path": "docs/exec-plans/active/bootstrap-harness.md",
