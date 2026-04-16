@@ -17,16 +17,16 @@ import {
   listCronJobs,
   listTelegramGroups,
   runCronJobNow,
-  setEnvVar,
   upsertCronJob
 } from "../lib/openclaw.js";
 import { runPreflightChecks } from "../lib/preflight.js";
 import {
   ensureOwsInstalled,
-  resolveOrCreateWallet
+  provisionApiKey,
+  resolveOrCreateWallet,
+  writeTokenToOpenclawEnv
 } from "../lib/ows-bootstrap.js";
 import { runPlan, type PlanResult } from "../lib/rebalance.js";
-import { buildApiKeyCreateCommand } from "../lib/ows.js";
 import { loadProfile, saveProfile } from "../lib/profile.js";
 import { renderAgentInstructions } from "../lib/template.js";
 import type {
@@ -424,85 +424,6 @@ async function preflight(settings: VaultManagerSettings): Promise<void> {
 }
 
 
-async function promptTokenSource(
-  defaultSource: TokenSource,
-  existing?: TokenSource
-): Promise<TokenSource> {
-  const baseline = existing ?? defaultSource;
-  const kind = requiredString(
-    await p.select({
-      message: "OWS API token source",
-      initialValue: baseline.kind,
-      options: [
-        {
-          value: "env",
-          label: "Environment variable",
-          hint: "Gateway process reads the token from an env var. Good for ad-hoc setups."
-        },
-        {
-          value: "file",
-          label: "File on disk",
-          hint: "Read the token from a file path (mounted secrets, systemd EnvironmentFile, etc)."
-        }
-      ]
-    }),
-    "token source"
-  ) as TokenSource["kind"];
-
-  if (kind === "env") {
-    const envVar = requiredString(
-      await p.text({
-        message: "Environment variable name",
-        placeholder:
-          baseline.kind === "env" ? baseline.envVar : defaultSource.kind === "env" ? defaultSource.envVar : "OWS_MORPHO_VAULT_MANAGER_TOKEN",
-        defaultValue: baseline.kind === "env" ? baseline.envVar : ""
-      }),
-      "token environment variable"
-    );
-    return { kind: "env", envVar };
-  }
-
-  const filePath = requiredString(
-    await p.text({
-      message: "Secret file path",
-      placeholder:
-        baseline.kind === "file" ? baseline.path : "/run/secrets/morpho-vault-manager-token",
-      defaultValue: baseline.kind === "file" ? baseline.path : ""
-    }),
-    "secret file path"
-  );
-
-  const mode = requiredString(
-    await p.select({
-      message: "Secret file format",
-      initialValue: baseline.kind === "file" ? baseline.mode ?? "singleValue" : "singleValue",
-      options: [
-        { value: "singleValue", label: "Plain text containing only the token" },
-        { value: "json", label: "JSON file with a token field" }
-      ]
-    }),
-    "secret file format"
-  ) as "singleValue" | "json";
-
-  const jsonField =
-    mode === "json"
-      ? optionalString(
-          await p.text({
-            message: "JSON field name",
-            placeholder: baseline.kind === "file" ? baseline.jsonField ?? "apiKey" : "apiKey",
-            defaultValue: baseline.kind === "file" ? baseline.jsonField ?? "" : ""
-          })
-        )
-      : "";
-
-  return {
-    kind: "file",
-    path: filePath,
-    mode,
-    jsonField: jsonField.length > 0 ? jsonField : undefined
-  };
-}
-
 type FundingProbe = {
   balance: string;
   checkedAt: string;
@@ -782,94 +703,60 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     "Cron Schedule"
   );
 
-  const defaultTokenEnvVar = tokenEnvVarForProfile(settings, profileId);
-  const defaultTokenSourceForProfile: TokenSource =
-    settings.defaultTokenSource.kind === "env"
-      ? { kind: "env", envVar: defaultTokenEnvVar }
-      : settings.defaultTokenSource;
-  const tokenSource = await promptTokenSource(
-    defaultTokenSourceForProfile,
-    existing.profile?.tokenSource
-  );
-  const tokenEnvVar =
-    tokenSource.kind === "env" ? tokenSource.envVar : defaultTokenEnvVar;
+  const tokenEnvVar = tokenEnvVarForProfile(settings, profileId);
+  const tokenSource: TokenSource = { kind: "env", envVar: tokenEnvVar };
+
   const agentId = agentIdForProfile(settings, profileId);
   const workspaceDir = workspaceDirForAgent(settings, agentId);
+
   const cronEnabled = requiredBoolean(await p.confirm({
     message: "Enable the cron job immediately?",
     initialValue: existing.profile?.cronEnabled ?? false
   }), "cron enable confirmation");
 
-  const tokenSourceDescription = describeTokenSource(tokenSource);
-  const tokenProvisioningHint = (() => {
-    if (tokenSource.kind === "env") {
-      return `Inject the returned token into the OpenClaw gateway environment as ${tokenSource.envVar}.`;
-    }
-    if (tokenSource.kind === "file") {
-      const jsonSuffix =
-        tokenSource.mode === "json"
-          ? ` (JSON field "${tokenSource.jsonField ?? "apiKey"}")`
-          : "";
-      return `Write the returned token to ${tokenSource.path}${jsonSuffix} and make sure the OpenClaw gateway process can read it.`;
-    }
-    return `Token is pre-resolved by the OpenClaw host (${tokenSource.origin}). No manual provisioning required.`;
-  })();
-
-  await p.note(
-    [
-      "Manual step 2/2: create the OWS API key yourself so the token never passes through the plugin process.",
-      "",
-      buildApiKeyCreateCommand({
+  const provisionSpinner = p.spinner();
+  provisionSpinner.start("Provisioning OWS API key...");
+  let apiKeyAttempts = 0;
+  let apiResult: { token: string } | undefined;
+  let resolutionPassphrase = resolution.passphrase;
+  while (!apiResult) {
+    try {
+      apiResult = await provisionApiKey({
         settings,
+        walletRef: resolution.walletRef,
         keyName: `${agentId}-agent`,
-        walletRef: wallet.walletRef
-      }),
-      "",
-      tokenProvisioningHint,
-      "",
-      `Token source: ${tokenSourceDescription}`
-    ].join("\n"),
-    "OWS API Key"
-  );
-
-  while (true) {
-    const probe = await resolveApiToken(tokenSource);
-    if (probe.ok) {
-      const envResult = await setEnvVar(settings, tokenEnvVar, probe.value);
-      if (envResult.ok) {
-        await p.note(
-          `Token source ${probe.description} resolved and written to openclaw.json (env.vars.${tokenEnvVar}).`,
-          "Token Verified"
-        );
-      } else {
-        await p.note(
-          [
-            `Token source ${probe.description} resolved successfully.`,
-            "",
-            `Warning: failed to write env var to openclaw.json: ${envResult.stderr || "unknown error"}`,
-            `The cron agent may not be able to access the token. Set it manually:`,
-            `  openclaw config set env.vars.${tokenEnvVar} <token-value>`
-          ].join("\n"),
-          "Token Verified (env injection failed)"
-        );
+        passphrase: resolutionPassphrase
+      });
+    } catch (error) {
+      if (
+        (error as { code?: string }).code === "bad_passphrase" &&
+        resolution.source === "override" &&
+        apiKeyAttempts === 0
+      ) {
+        provisionSpinner.stop("Passphrase was rejected by OWS.");
+        apiKeyAttempts += 1;
+        const entered = await p.password({
+          message: `Retry passphrase for wallet ${resolution.walletRef}`
+        });
+        if (p.isCancel(entered) || !entered) {
+          fail("Wallet passphrase retry cancelled.");
+        }
+        resolutionPassphrase = entered as string;
+        provisionSpinner.start("Provisioning OWS API key...");
+        continue;
       }
-      break;
-    }
-
-    const retry = requiredBoolean(
-      await p.confirm({
-        message: `Token not yet available (${probe.description}). ${probe.error}\nRetry after provisioning?`,
-        initialValue: true
-      }),
-      "token retry confirmation"
-    );
-
-    if (!retry) {
-      fail(
-        `OWS API token could not be resolved via ${tokenSourceDescription}. Provision it and rerun configure.`
-      );
+      provisionSpinner.stop("OWS API key provisioning failed.");
+      fail(`OWS API key provisioning failed: ${(error as Error).message}`);
     }
   }
+  provisionSpinner.stop("OWS API key provisioned.");
+
+  await writeTokenToOpenclawEnv(settings, tokenEnvVar, apiResult.token);
+
+  await p.note(
+    `Token written to openclaw.json env.vars.${tokenEnvVar} (rotated on every configure run).`,
+    "Token Wired"
+  );
 
   const fundingProbe = await promptFundingGuidance(settings, wallet.walletAddress);
 
@@ -975,7 +862,7 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
       `Schedule: ${describeCronSchedule(profile.cronExpression)}`,
       `Delivery: ${describeDeliveryTarget(profile)}`,
       `Risk config: ${formatRiskPresetConfig(profile.riskPreset)}`,
-      `Token source: ${tokenSourceDescription}`,
+      `Token source: env:${tokenEnvVar}`,
       `Model: ${modelPreference ?? (inheritedModelSnapshot ? `(default OpenClaw routing, currently ${inheritedModelSnapshot})` : "(default OpenClaw routing)")}`
     ].join("\n"),
     "Configured"
