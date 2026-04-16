@@ -98,3 +98,13 @@ export type CliLogger = {
   warn?: (message: string) => void;
   error?: (message: string) => void;
 };
+
+export type WalletMarker = {
+  walletRef: string;
+  walletAddress: `0x${string}`;
+  passphrase: string;
+  mnemonic?: string;
+  source: "auto-created" | "operator-provided";
+  canonicalName: string;
+  createdAt: string;
+};
