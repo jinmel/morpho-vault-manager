@@ -4,12 +4,12 @@ This repository is being built for an agent-first workflow. Treat the repository
 
 ## Start Here
 
-- Product scope: [docs/SPEC.md](/Users/jinsuk/code/morpho-vault-manager/docs/SPEC.md)
-- Architecture: [ARCHITECTURE.md](/Users/jinsuk/code/morpho-vault-manager/ARCHITECTURE.md)
-- Security invariants: [SECURITY.md](/Users/jinsuk/code/morpho-vault-manager/SECURITY.md)
-- Progress tracker: [progress.json](/Users/jinsuk/code/morpho-vault-manager/state/progress.json)
-- Active implementation plan: [bootstrap-harness.md](/Users/jinsuk/code/morpho-vault-manager/docs/exec-plans/active/bootstrap-harness.md)
-- Eval matrix: [vault-manager-evals.md](/Users/jinsuk/code/morpho-vault-manager/evals/vault-manager-evals.md)
+- Product scope: [docs/SPEC.md](./docs/SPEC.md)
+- Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
+- Security invariants: [SECURITY.md](./SECURITY.md)
+- Progress tracker: [state/progress.json](./state/progress.json)
+- Active implementation plan: [docs/exec-plans/active/bootstrap-harness.md](./docs/exec-plans/active/bootstrap-harness.md)
+- Eval matrix: [evals/vault-manager-evals.md](./evals/vault-manager-evals.md)
 
 ## Repository Rules
 
