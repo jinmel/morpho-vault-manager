@@ -4,7 +4,7 @@ This repository is being built for an agent-first workflow. Treat the repository
 
 ## Start Here
 
-- Product scope: [docs/openclaw-vault-manager-spec.md](/Users/jinsuk/code/morpho-vault-manager/docs/openclaw-vault-manager-spec.md)
+- Product scope: [docs/SPEC.md](/Users/jinsuk/code/morpho-vault-manager/docs/SPEC.md)
 - Architecture: [ARCHITECTURE.md](/Users/jinsuk/code/morpho-vault-manager/ARCHITECTURE.md)
 - Security invariants: [SECURITY.md](/Users/jinsuk/code/morpho-vault-manager/SECURITY.md)
 - Progress tracker: [progress.json](/Users/jinsuk/code/morpho-vault-manager/state/progress.json)

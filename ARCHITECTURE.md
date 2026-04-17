@@ -112,7 +112,7 @@ This is the intended direction for the repo:
 ├── ARCHITECTURE.md
 ├── SECURITY.md
 ├── docs/
-│   ├── openclaw-vault-manager-spec.md
+│   ├── SPEC.md
 │   └── exec-plans/
 │       └── active/
 ├── evals/

@@ -38,7 +38,7 @@ require_file "skills/morpho-cli/SKILL.md"
 
 forbid_file "state/progress.json"
 forbid_file "evals/vault-manager-evals.md"
-forbid_file "docs/openclaw-vault-manager-spec.md"
+forbid_file "docs/SPEC.md"
 forbid_file "docs/exec-plans/active/bootstrap-harness.md"
 forbid_file "index.ts"
 forbid_file "tsconfig.json"

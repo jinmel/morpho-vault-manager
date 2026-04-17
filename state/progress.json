@@ -10,7 +10,7 @@
     "status": "completed"
   },
   "sourceOfTruth": {
-    "productSpec": "docs/openclaw-vault-manager-spec.md",
+    "productSpec": "docs/SPEC.md",
     "architecture": "ARCHITECTURE.md",
     "security": "SECURITY.md",
     "agentMap": "AGENTS.md",
@@ -20,8 +20,8 @@
     {
       "id": "product_spec",
       "status": "completed",
-      "path": "docs/openclaw-vault-manager-spec.md",
-      "notes": "Native OpenClaw plugin direction, OWS security model, and cron-based periodic agent spec are documented."
+      "path": "docs/SPEC.md",
+      "notes": "Consolidated into docs/SPEC.md on 2026-04-17 (merged main spec + 2026-04-15 release addendum + 2026-04-16 configurable risk params [planned] + 2026-04-17 configure wizard automation). Native OpenClaw plugin direction, OWS security model, and cron-based periodic agent spec are documented."
     },
     {
       "id": "harness_scaffold",
@@ -77,7 +77,7 @@
     {
       "id": "docs_spec_alignment",
       "status": "completed",
-      "notes": "docs/openclaw-vault-manager-spec.md, ARCHITECTURE.md, and SECURITY.md now document the intentional out-of-process OWS API-key provisioning path and place status/pause/resume/run-now in Phase 1 to match shipped behavior."
+      "notes": "docs/SPEC.md (consolidated), ARCHITECTURE.md, and SECURITY.md now document the intentional out-of-process OWS API-key provisioning path and place status/pause/resume/run-now in Phase 1 to match shipped behavior."
     },
     {
       "id": "morpho_skill_migration",
@@ -127,7 +127,7 @@
     {
       "id": "configure_wizard_automation",
       "status": "completed",
-      "path": "docs/openclaw-vault-manager-spec-configure-wizard-automation.md",
+      "path": "docs/SPEC.md",
       "notes": "configure wizard replaces manual OWS wallet + API-key steps with a src/lib/ows-bootstrap.ts adapter. Marker file at ~/.openclaw/vault-manager/state/<profileId>.wallet.json (0600) stores walletRef + passphrase (+ mnemonic for auto-created). --wallet flag preserves bring-your-own-wallet UX with masked passphrase prompt. CFG-006..010 evals cover auto-create, marker reuse, operator override, bad-passphrase, and name collision. SECURITY.md documents the credential-handling tradeoff."
     }
   ],
@@ -242,7 +242,7 @@
     },
     {
       "id": "release_spec_revision",
-      "path": "docs/openclaw-vault-manager-spec-revised-2026-04-15.md",
+      "path": "docs/SPEC.md",
       "status": "pass",
       "notes": "Added a revised spec addendum for release/install requirements: no unsafe override in release artifacts, compiled runtime packaging, and compatibility floors defined by full installed-plugin command execution rather than metadata-only load."
     }
