@@ -2,7 +2,7 @@ node_modules/
 .tmp/
 dist/
 .worktrees/
-morpho-vault-manager-*.tgz
+openclaw-morpho-vault-manager-*.tgz
 .claude/CLAUDE.md
 .claude/skills/
 .claude/worktrees
