@@ -631,6 +631,13 @@ export async function runPlan(
   if (blockers.length === 0) {
     if (totalManaged === 0n) {
       reasons.push("No USDC balance and no managed Morpho vault positions were found.");
+    } else {
+      const minTotal = parseUnits(String(profile.riskPreset.minimumTotalManagedUsd), USDC_DECIMALS);
+      if (minTotal > 0n && totalManaged < minTotal) {
+        reasons.push(
+          `Total managed USDC ${formatUsdc(totalManaged)} is below the configured minimum of ${formatUsdc(minTotal)} — skipping rebalance until more liquidity arrives.`
+        );
+      }
     }
     if (selected.length === 0) {
       reasons.push("No candidate vaults passed the current risk constraints.");

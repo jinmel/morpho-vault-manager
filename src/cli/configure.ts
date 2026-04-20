@@ -27,6 +27,7 @@ import {
   inspectWalletStatus,
   provisionApiKey,
   resolveOrCreateWallet,
+  walletMarkerPath,
   writeWalletMarker,
   writeTokenToOpenclawEnv
 } from "../lib/ows-bootstrap.js";
@@ -564,6 +565,60 @@ async function promptModelSelection(
   return { modelPreference };
 }
 
+function parseNumericInput(raw: string, label: string, opts: { min: number; max: number }): number {
+  const value = Number(raw.trim());
+  if (!Number.isFinite(value)) {
+    fail(`${label} must be a number.`);
+  }
+  if (value < opts.min || value > opts.max) {
+    fail(`${label} must be between ${opts.min} and ${opts.max}.`);
+  }
+  return value;
+}
+
+async function promptRiskPresetOverrides(
+  preset: RiskPreset,
+  previous?: RiskPreset
+): Promise<void> {
+  if (previous) {
+    preset.rebalanceDriftPct = previous.rebalanceDriftPct;
+    preset.minimumTotalManagedUsd = previous.minimumTotalManagedUsd;
+  }
+
+  const customize = requiredBoolean(
+    await p.confirm({
+      message: "Customize rebalance thresholds? (drift % and minimum managed USDC)",
+      initialValue: false
+    }),
+    "customize thresholds confirmation"
+  );
+  if (!customize) return;
+
+  const driftPctInput = requiredString(
+    await p.text({
+      message: "Drift threshold (% deviation from target before rebalancing)",
+      placeholder: (preset.rebalanceDriftPct * 100).toFixed(2),
+      defaultValue: (preset.rebalanceDriftPct * 100).toFixed(2)
+    }),
+    "drift threshold"
+  );
+  const driftPct = parseNumericInput(driftPctInput, "drift threshold", { min: 0.1, max: 50 });
+  preset.rebalanceDriftPct = driftPct / 100;
+
+  const minTotalInput = requiredString(
+    await p.text({
+      message: "Minimum total managed USDC before rebalancing runs (dust floor)",
+      placeholder: String(preset.minimumTotalManagedUsd),
+      defaultValue: String(preset.minimumTotalManagedUsd)
+    }),
+    "minimum total managed USD"
+  );
+  preset.minimumTotalManagedUsd = parseNumericInput(minTotalInput, "minimum total managed USD", {
+    min: 0,
+    max: 1_000_000
+  });
+}
+
 async function promptCronSchedule(
   settings: VaultManagerSettings,
   existingExpression?: string,
@@ -641,7 +696,7 @@ async function preResolveWalletAdoption(
     );
     const clear = requiredBoolean(
       await p.confirm({
-        message: `Delete stale marker at ${walletMarkerPathFor(settings, profileId)} and continue?`,
+        message: `Delete stale marker at ${walletMarkerPath(settings, profileId)} and continue?`,
         initialValue: false
       }),
       "stale marker clear confirmation"
@@ -673,10 +728,6 @@ async function preResolveWalletAdoption(
   }
 
   return undefined;
-}
-
-function walletMarkerPathFor(settings: VaultManagerSettings, profileId: string): string {
-  return path.join(settings.dataRoot, "state", `${profileId}.wallet.json`);
 }
 
 async function resolveOverrideParams(
@@ -760,7 +811,11 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     "risk profile"
   ) as keyof typeof RISK_PRESETS;
 
-  const riskPreset = RISK_PRESETS[riskProfile];
+  const riskPreset: RiskPreset = structuredClone(RISK_PRESETS[riskProfile]);
+  const previousCustomizations =
+    existing.profile?.riskProfile === riskProfile ? existing.profile.riskPreset : undefined;
+  await promptRiskPresetOverrides(riskPreset, previousCustomizations);
+
   await p.note(
     [
       `Selected risk profile: ${riskPreset.label}`,

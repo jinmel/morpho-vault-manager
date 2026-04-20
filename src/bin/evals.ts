@@ -512,6 +512,22 @@ const SCENARIOS: Scenario[] = [
       assertEqual("status", result.status, "planned");
       assertTrue("has actions", result.actions.length > 0);
     }
+  },
+  {
+    id: "REB-013",
+    description: "Dust floor: total managed below minimum → no_op",
+    profile: {
+      riskProfile: "balanced"
+    },
+    vaults: [VAULT_A, VAULT_B],
+    positions: [
+      { vaultAddress: VAULT_A.address, vaultName: VAULT_A.name, suppliedUsdc: "5" }
+    ],
+    idleUsdc: "5",
+    expect(result) {
+      assertEqual("status", result.status, "no_op");
+      assertContainsReason(result, "below the configured minimum");
+    }
   }
 ];
 

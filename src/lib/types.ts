@@ -37,6 +37,7 @@ export type RiskPreset = {
   rebalanceDriftPct: number;
   minimumPositionUsd: number;
   minimumVaultTvlUsd: number;
+  minimumTotalManagedUsd: number;
   rewardPreference: "ignore" | "neutral" | "include";
   scoreWeights: {
     apy: number;
