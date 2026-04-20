@@ -1,7 +1,10 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { getAddress, parseUnits, formatUnits } from "viem";
+import { runHistory } from "../cli/history.js";
+import { writeJsonFile } from "../lib/fs.js";
 import { BASE_USDC_ADDRESS, RISK_PRESETS, USDC_DECIMALS } from "../lib/constants.js";
 import {
   CRON_SCHEDULE_PRESETS,
@@ -36,7 +39,8 @@ import {
 import {
   runPlan,
   type PlanReadDeps,
-  type PlanResult
+  type PlanResult,
+  type PlanStatus
 } from "../lib/rebalance.js";
 import { renderAgentInstructions } from "../lib/template.js";
 import type { RiskProfileId, VaultManagerProfile, VaultManagerSettings } from "../lib/types.js";
@@ -562,6 +566,116 @@ function assertFalse(label: string, value: boolean, detail?: string): void {
   }
 }
 
+async function captureStdout<T>(fn: () => Promise<T>): Promise<{ stdout: string; result: T }> {
+  const chunks: string[] = [];
+  const original = process.stdout.write.bind(process.stdout);
+  const previousExitCode = process.exitCode;
+  process.exitCode = 0;
+  (process.stdout as { write: (chunk: string | Uint8Array) => boolean }).write = (
+    chunk: string | Uint8Array
+  ) => {
+    chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+    return true;
+  };
+  try {
+    const result = await fn();
+    return { stdout: chunks.join(""), result };
+  } finally {
+    process.stdout.write = original;
+    process.exitCode = previousExitCode;
+  }
+}
+
+type FixtureReceiptInput = {
+  runId?: string;
+  profileId: string;
+  status: PlanStatus;
+  createdAt: string;
+  walletAddress?: string;
+  totalManagedUsdc?: string;
+  totalPlannedTurnoverUsdc?: string;
+  maxDriftPct?: string;
+  selectedVaults?: Array<{ address: string; name: string }>;
+  allocations?: Array<{
+    vaultAddress: string;
+    vaultName: string;
+    targetPct: string;
+    currentPct?: string;
+    targetUsdc?: string;
+    currentUsdc?: string;
+    diffUsdc?: string;
+  }>;
+  actions?: PlanResult["actions"];
+};
+
+function makeFixtureReceipt(input: FixtureReceiptInput, settings: VaultManagerSettings): PlanResult {
+  const runId = input.runId ?? randomUUID();
+  const walletAddress = input.walletAddress ?? SCENARIO_WALLET;
+  const selected = (input.selectedVaults ?? []).map((vault) => ({
+    address: vault.address,
+    name: vault.name,
+    apyPct: "0.05",
+    feePct: "0.05",
+    tvlUsd: "10000000",
+    score: "0.05",
+    scoreBreakdown: {
+      apyTerm: "0.05",
+      tvlTerm: "0.00",
+      feeTerm: "0.00",
+      rewardsPenaltyTerm: "0.00"
+    }
+  }));
+  const allocations = (input.allocations ?? []).map((allocation) => ({
+    vaultAddress: allocation.vaultAddress,
+    vaultName: allocation.vaultName,
+    currentUsdc: allocation.currentUsdc ?? "0",
+    targetUsdc: allocation.targetUsdc ?? "0",
+    diffUsdc: allocation.diffUsdc ?? "0",
+    currentPct: allocation.currentPct ?? "0.00",
+    targetPct: allocation.targetPct
+  }));
+  return {
+    runId,
+    status: input.status,
+    profileId: input.profileId,
+    createdAt: input.createdAt,
+    receiptPath: path.join(settings.dataRoot, "runs", input.profileId, `${runId}.json`),
+    logPath: path.join(settings.dataRoot, "logs", input.profileId, `${runId}.jsonl`),
+    walletAddress,
+    riskProfile: "balanced",
+    reasons: [],
+    warnings: [],
+    metrics: {
+      idleUsdc: "0",
+      totalManagedUsdc: input.totalManagedUsdc ?? "0",
+      turnoverCapUsdc: "10000",
+      totalPlannedTurnoverUsdc: input.totalPlannedTurnoverUsdc ?? "0",
+      maxDriftPct: input.maxDriftPct ?? "0.00",
+      driftThresholdPct: "5.00"
+    },
+    vaults: {
+      selected,
+      rejected: []
+    },
+    allocations,
+    actions: input.actions ?? []
+  };
+}
+
+async function seedReceipt(
+  settings: VaultManagerSettings,
+  receipt: PlanResult
+): Promise<void> {
+  await writeJsonFile(receipt.receiptPath, receipt);
+}
+
+async function cleanupDataRoot(settings: VaultManagerSettings): Promise<void> {
+  await fs.rm(settings.dataRoot, { recursive: true, force: true });
+}
+
+const HIS_VAULT_X = getAddress("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
+const HIS_VAULT_Y = getAddress("0xffffffffffffffffffffffffffffffffffffffff");
+
 const SYSTEM_SCENARIOS: SystemScenario[] = [
   {
     id: "CFG-001",
@@ -1041,6 +1155,239 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
         nameFlag.startsWith("morpho-vault-manager-") && nameFlag !== "morpho-vault-manager",
         `got ${nameFlag}`
       );
+    }
+  },
+  {
+    id: "HIS-001",
+    description: "Empty history returns zero-run JSON, not an error",
+    async run() {
+      const settings = makeTempSettings();
+      try {
+        const { stdout } = await captureStdout(() =>
+          runHistory(settings, { profileId: "default", json: true })
+        );
+        const parsed = JSON.parse(stdout) as {
+          profileId: string;
+          runs: PlanResult[];
+          metrics: { runCount: number; medianIntervalMinutes: number | null };
+        };
+        assertEqual("profileId", parsed.profileId, "default");
+        assertEqual("runs length", parsed.runs.length, 0);
+        assertEqual("metrics.runCount", parsed.metrics.runCount, 0);
+        assertEqual("medianIntervalMinutes", parsed.metrics.medianIntervalMinutes, null);
+        assertEqual("exitCode", process.exitCode ?? 0, 0);
+      } finally {
+        await cleanupDataRoot(settings);
+      }
+    }
+  },
+  {
+    id: "HIS-002",
+    description: "List + filters compose (status, since, limit)",
+    async run() {
+      const settings = makeTempSettings();
+      const profileId = "default";
+      const t1 = "2026-04-15T10:00:00.000Z";
+      const t2 = "2026-04-16T10:00:00.000Z";
+      const t3 = "2026-04-17T10:00:00.000Z";
+      const middle = "2026-04-16T00:00:00.000Z";
+      try {
+        await seedReceipt(
+          settings,
+          makeFixtureReceipt(
+            { profileId, status: "planned", createdAt: t1, maxDriftPct: "1.00" },
+            settings
+          )
+        );
+        await seedReceipt(
+          settings,
+          makeFixtureReceipt(
+            { profileId, status: "no_op", createdAt: t2, maxDriftPct: "2.00" },
+            settings
+          )
+        );
+        await seedReceipt(
+          settings,
+          makeFixtureReceipt(
+            { profileId, status: "blocked", createdAt: t3, maxDriftPct: "3.00" },
+            settings
+          )
+        );
+
+        const defaultList = await captureStdout(() =>
+          runHistory(settings, { profileId, json: true })
+        );
+        const defaultParsed = JSON.parse(defaultList.stdout) as {
+          runs: PlanResult[];
+          metrics: { runCount: number };
+        };
+        assertEqual("default count", defaultParsed.runs.length, 3);
+        assertEqual("desc[0]", defaultParsed.runs[0].createdAt, t3);
+        assertEqual("desc[1]", defaultParsed.runs[1].createdAt, t2);
+        assertEqual("desc[2]", defaultParsed.runs[2].createdAt, t1);
+
+        const plannedOnly = await captureStdout(() =>
+          runHistory(settings, { profileId, json: true, status: "planned", limit: 1 })
+        );
+        const plannedParsed = JSON.parse(plannedOnly.stdout) as { runs: PlanResult[] };
+        assertEqual("planned-only count", plannedParsed.runs.length, 1);
+        assertEqual("planned-only status", plannedParsed.runs[0].status, "planned");
+
+        const sinceFiltered = await captureStdout(() =>
+          runHistory(settings, { profileId, json: true, since: middle })
+        );
+        const sinceParsed = JSON.parse(sinceFiltered.stdout) as { runs: PlanResult[] };
+        assertEqual("since count", sinceParsed.runs.length, 2);
+      } finally {
+        await cleanupDataRoot(settings);
+      }
+    }
+  },
+  {
+    id: "HIS-003",
+    description: "Per-run allocation delta enrichment",
+    async run() {
+      const settings = makeTempSettings();
+      const profileId = "default";
+      const olderRunId = randomUUID();
+      const newerRunId = randomUUID();
+      const olderCreated = "2026-04-17T08:00:00.000Z";
+      const newerCreated = "2026-04-18T08:00:00.000Z";
+      try {
+        await seedReceipt(
+          settings,
+          makeFixtureReceipt(
+            {
+              runId: olderRunId,
+              profileId,
+              status: "planned",
+              createdAt: olderCreated,
+              allocations: [
+                {
+                  vaultAddress: HIS_VAULT_X,
+                  vaultName: "Vault X",
+                  targetPct: "40.00",
+                  currentPct: "40.00"
+                }
+              ],
+              selectedVaults: [{ address: HIS_VAULT_X, name: "Vault X" }]
+            },
+            settings
+          )
+        );
+        await seedReceipt(
+          settings,
+          makeFixtureReceipt(
+            {
+              runId: newerRunId,
+              profileId,
+              status: "planned",
+              createdAt: newerCreated,
+              allocations: [
+                {
+                  vaultAddress: HIS_VAULT_X,
+                  vaultName: "Vault X",
+                  targetPct: "60.00",
+                  currentPct: "40.00"
+                }
+              ],
+              selectedVaults: [{ address: HIS_VAULT_X, name: "Vault X" }]
+            },
+            settings
+          )
+        );
+
+        const newerCapture = await captureStdout(() =>
+          runHistory(settings, { profileId, json: true, run: newerRunId })
+        );
+        const newerParsed = JSON.parse(newerCapture.stdout) as {
+          enrichment: { allocationDeltas: Array<{ vaultAddress: string; priorTargetPct: string | null; deltaPct: string | null }> };
+        };
+        assertEqual("newer delta count", newerParsed.enrichment.allocationDeltas.length, 1);
+        const newerDelta = newerParsed.enrichment.allocationDeltas[0];
+        assertEqual("newer vault", newerDelta.vaultAddress, HIS_VAULT_X);
+        assertEqual("newer priorTargetPct", newerDelta.priorTargetPct, "40.00");
+        assertEqual("newer deltaPct", newerDelta.deltaPct, "20.00");
+
+        const olderCapture = await captureStdout(() =>
+          runHistory(settings, { profileId, json: true, run: olderRunId })
+        );
+        const olderParsed = JSON.parse(olderCapture.stdout) as {
+          enrichment: { allocationDeltas: Array<{ vaultAddress: string; priorTargetPct: string | null; deltaPct: string | null }> };
+        };
+        const olderDelta = olderParsed.enrichment.allocationDeltas[0];
+        assertEqual("older priorTargetPct", olderDelta.priorTargetPct, null);
+        assertEqual("older deltaPct", olderDelta.deltaPct, null);
+      } finally {
+        await cleanupDataRoot(settings);
+      }
+    }
+  },
+  {
+    id: "HIS-004",
+    description: "Aggregate metrics across 5 receipts",
+    async run() {
+      const settings = makeTempSettings();
+      const profileId = "default";
+      // 5 receipts with 20-min gaps. Drifts: 1,2,3,4,5 → avg 3.00. Turnovers: 100,200,300,400,500 → avg 300.
+      // Top vault is X for runs 1-2, Y for runs 3-5. Churn = 1, uniqueVaults = 2.
+      const baseline = new Date("2026-04-17T00:00:00.000Z").getTime();
+      const drifts = ["1.00", "2.00", "3.00", "4.00", "5.00"];
+      const turnovers = ["100", "200", "300", "400", "500"];
+      const tops = [HIS_VAULT_X, HIS_VAULT_X, HIS_VAULT_Y, HIS_VAULT_Y, HIS_VAULT_Y];
+      try {
+        for (let i = 0; i < 5; i += 1) {
+          const top = tops[i];
+          const name = top === HIS_VAULT_X ? "Vault X" : "Vault Y";
+          await seedReceipt(
+            settings,
+            makeFixtureReceipt(
+              {
+                profileId,
+                status: "planned",
+                createdAt: new Date(baseline + i * 20 * 60_000).toISOString(),
+                maxDriftPct: drifts[i],
+                totalPlannedTurnoverUsdc: turnovers[i],
+                totalManagedUsdc: "10000",
+                selectedVaults: [{ address: top, name }],
+                allocations: [
+                  {
+                    vaultAddress: top,
+                    vaultName: name,
+                    targetPct: "100.00"
+                  }
+                ]
+              },
+              settings
+            )
+          );
+        }
+
+        const { stdout } = await captureStdout(() =>
+          runHistory(settings, { profileId, json: true, limit: 100 })
+        );
+        const parsed = JSON.parse(stdout) as {
+          runs: PlanResult[];
+          metrics: {
+            runCount: number;
+            plannedCount: number;
+            avgMaxDriftPct: string;
+            avgTurnoverUsdc: string;
+            medianIntervalMinutes: number | null;
+            uniqueVaultsTouched: number;
+            vaultChurnCount: number;
+          };
+        };
+        assertEqual("runCount", parsed.metrics.runCount, 5);
+        assertEqual("plannedCount", parsed.metrics.plannedCount, 5);
+        assertEqual("avgMaxDriftPct", parsed.metrics.avgMaxDriftPct, "3.00");
+        assertEqual("avgTurnoverUsdc", parsed.metrics.avgTurnoverUsdc, "300");
+        assertEqual("medianIntervalMinutes", parsed.metrics.medianIntervalMinutes, 20);
+        assertEqual("uniqueVaultsTouched", parsed.metrics.uniqueVaultsTouched, 2);
+        assertEqual("vaultChurnCount", parsed.metrics.vaultChurnCount, 1);
+      } finally {
+        await cleanupDataRoot(settings);
+      }
     }
   }
 ];

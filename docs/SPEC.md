@@ -165,6 +165,25 @@ Shows a confirmation prompt unless `--force` is set. Errors are accumulated and 
 
 `--all` discovers all profile IDs and tears down each one in sequence.
 
+#### `history`
+
+Show past rebalance plan runs persisted locally under `{dataRoot}/runs/{profileId}/`, with enriched metrics derived from the receipts on disk. `history` is **read-only**: it never calls OWS, never issues an RPC, and never writes new artifacts.
+
+The subcommand exposes four views:
+
+- **Default list** — a table of recent runs (columns: short runId, `createdAt`, status, `maxDriftPct`, action count, planned turnover USDC, selected vault count), sorted by `createdAt` descending. An empty history is not an error; the command prints a "no history" note and exits 0.
+- `--run <runId>` — print the full receipt for a single run plus a per-run enrichment block (planned turnover as a percentage of managed USDC, action counts by kind, and per-vault allocation deltas versus the prior run). Accepts either a full UUID or a unique prefix (min 6 chars); ambiguous or unknown prefixes exit non-zero.
+- `--logs <runId>` — stream the JSONL event log for a run to stdout. The log is already redacted at write time, so `history` does not re-redact.
+- `--json` — emit `{ profileId, runs: PlanResult[], metrics: HistoryAggregateMetrics }` as a single JSON document. No ANSI, no prompts, no mixed stdout text.
+
+Filters compose across the list and aggregate metrics:
+
+- `--since <iso>` — include only runs with `createdAt >= <iso>`.
+- `--status <planned|no_op|blocked>` — filter by run status.
+- `--limit <n>` — cap the number of runs returned (default `20`).
+
+`history` shows **plan runs persisted locally**. Transaction hashes and on-chain outcomes live in the OpenClaw task output and the block explorer, not in these receipts; operators investigating onchain execution should consult those surfaces instead.
+
 The actual periodic execution uses **OpenClaw cron**, not a custom scheduler.
 
 ## Scope of the MVP Strategy

@@ -16,6 +16,7 @@ The architecture is intentionally narrow. The system is not a general trading bo
 - Morpho data reads and transaction preparation
 - Periodic rebalancing through OpenClaw cron
 - Reporting and auditability
+- Read-only history inspection of persisted plan runs via the `history` subcommand (alongside `configure`, `status`, `plan`, `allocate`, `run-now`, `pause`, `resume`, `reconfigure`, `teardown`)
 
 ### Out of Scope for v1
 
@@ -125,6 +126,8 @@ This is the intended direction for the repo:
 ```
 
 `src/` now contains the native plugin, CLI surfaces, and the first rebalance runtime implementation.
+
+The `history` subcommand is a read-only consumer of `{dataRoot}/runs/{profileId}/*.json` and `{dataRoot}/logs/{profileId}/*.jsonl` and writes nothing.
 
 ## Invariants
 

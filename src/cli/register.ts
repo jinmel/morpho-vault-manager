@@ -8,7 +8,9 @@ import {
   runProfilePlan,
   showStatus
 } from "./configure.js";
+import { runHistory } from "./history.js";
 import { runTeardown, runTeardownAll } from "./teardown.js";
+import type { PlanStatus } from "../lib/rebalance.js";
 import type { CliLogger, VaultManagerSettings } from "../lib/types.js";
 
 type RegisterContext = {
@@ -124,5 +126,35 @@ export function registerVaultManagerCli({ program, logger, settings }: RegisterC
       } else {
         await runTeardown({ settings, profileId: opts.profile, force: opts.force, keepLogs: opts.keepLogs });
       }
+    });
+
+  vaultManager
+    .command("history")
+    .description("Show past rebalance runs with enriched metrics")
+    .option("--profile <id>", "Profile id", "default")
+    .option("--json", "Output JSON", false)
+    .option("--run <runId>", "Show a specific run (runId or unique prefix)")
+    .option("--logs <runId>", "Stream the JSONL log for a run")
+    .option("--since <iso>", "Filter runs with createdAt >= this ISO date")
+    .option("--status <status>", "Filter by status: planned | no_op | blocked")
+    .option("--limit <n>", "Max runs to include (default 20)", "20")
+    .action(async (opts: {
+      profile: string;
+      json: boolean;
+      run?: string;
+      logs?: string;
+      since?: string;
+      status?: string;
+      limit: string;
+    }) => {
+      await runHistory(settings, {
+        profileId: opts.profile,
+        json: !!opts.json,
+        run: opts.run,
+        logs: opts.logs,
+        since: opts.since,
+        status: opts.status as PlanStatus | undefined,
+        limit: Number.parseInt(opts.limit, 10)
+      });
     });
 }

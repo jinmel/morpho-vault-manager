@@ -42,6 +42,10 @@ These evals define the minimum deterministic behavior expected from the reposito
 | `REB-011` | Drift below threshold produces no-op | Positions slightly off target but drift below profile threshold | Rebalance returns no-op with drift-below-threshold reason | `scripts/check/evals --only=REB-011` |
 | `REB-012` | Drift above threshold triggers rebalance | Positions significantly off target with drift above profile threshold | Rebalance returns planned with actions | `scripts/check/evals --only=REB-012` |
 | `OBS-001` | Run logging is auditable | Any dry-run or live-run | Each run emits a JSONL log containing run id, phase transitions, final outcome, and no unredacted secrets | `scripts/check/evals --only=OBS-001` |
+| `HIS-001` | Empty history returns zero-run result, not an error | `dataRoot` with no `runs/{profileId}` directory | `runs: []` and `metrics.runCount: 0`; exit 0 | `scripts/check/evals --only=HIS-001` |
+| `HIS-002` | History list respects filters | Three seeded receipts (`planned`, `no_op`, `blocked`) | Default list returns 3 rows desc by `createdAt`; `--status planned --limit 1` returns 1 row; `--since <mid>` filters correctly | `scripts/check/evals --only=HIS-002` |
+| `HIS-003` | Per-run allocation delta enrichment | Two seeded receipts sharing a vault with different `targetPct` | Newer run's `allocationDeltas[].deltaPct` equals the arithmetic diff; older run's `priorTargetPct` is `null` | `scripts/check/evals --only=HIS-003` |
+| `HIS-004` | Aggregate metrics over a filtered window | Five seeded receipts with known drifts/turnovers across 20-minute gaps | `avgMaxDriftPct`, `avgTurnoverUsdc`, `medianIntervalMinutes`, `uniqueVaultsTouched`, and `vaultChurnCount` match precomputed expected values | `scripts/check/evals --only=HIS-004` |
 
 ## Promotion Rule
 

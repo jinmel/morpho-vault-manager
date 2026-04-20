@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "project": "openclaw-vault-manager",
-  "lastUpdated": "2026-04-17",
+  "lastUpdated": "2026-04-20",
   "overallStatus": "ready_for_review",
   "currentFocus": "v1_feature_complete",
   "currentPlan": {
@@ -129,6 +129,12 @@
       "status": "completed",
       "path": "docs/SPEC.md",
       "notes": "configure wizard replaces manual OWS wallet + API-key steps with a src/lib/ows-bootstrap.ts adapter. Marker file at ~/.openclaw/vault-manager/state/<profileId>.wallet.json (0600) stores walletRef + passphrase (+ mnemonic for auto-created). --wallet flag preserves bring-your-own-wallet UX with masked passphrase prompt. CFG-006..010 evals cover auto-create, marker reuse, operator override, bad-passphrase, and name collision. SECURITY.md documents the credential-handling tradeoff."
+    },
+    {
+      "id": "history-subcommand",
+      "status": "shipped",
+      "path": ".omc/plans/history-subcommand.md",
+      "notes": "Added vault-manager history subcommand per .omc/plans/history-subcommand.md. src/cli/history.ts implements runHistory with per-run allocation-delta enrichment (computePerRunEnrichment) and aggregate metrics (computeAggregateMetrics). Wired into src/cli/register.ts. HIS-001 (empty history), HIS-002 (list + filters compose), HIS-003 (per-run enrichment), and HIS-004 (aggregate metrics across 5 receipts) all pass via src/bin/evals.ts. Neither SECURITY.md nor src/lib/template.ts required changes — history is a read-only view over existing run receipts."
     }
   ],
   "checks": [
