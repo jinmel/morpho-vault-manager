@@ -5,3 +5,4 @@ dist/
 morpho-vault-manager-*.tgz
 .claude/CLAUDE.md
 .claude/skills/
+.claude/worktrees
