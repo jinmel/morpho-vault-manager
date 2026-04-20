@@ -798,6 +798,78 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     );
   }
 
+  const tokenEnvVar = tokenEnvVarForProfile(settings, profileId);
+  const tokenSource: TokenSource = { kind: "env", envVar: tokenEnvVar };
+
+  const agentId = agentIdForProfile(settings, profileId);
+  const workspaceDir = workspaceDirForAgent(settings, agentId);
+
+  const provisionSpinner = p.spinner();
+  provisionSpinner.start("Verifying wallet passphrase & provisioning OWS API key...");
+  const maxPassphraseRetries = 3;
+  let apiKeyAttempts = 0;
+  let apiResult: { token: string } | undefined;
+  let resolutionPassphrase = resolution.passphrase;
+  while (!apiResult) {
+    try {
+      apiResult = await provisionApiKey({
+        settings,
+        walletRef: resolution.walletRef,
+        keyName: `${agentId}-agent`,
+        passphrase: resolutionPassphrase
+      });
+    } catch (error) {
+      const isBadPassphrase = (error as { code?: string }).code === "bad_passphrase";
+      if (
+        isBadPassphrase &&
+        resolution.source === "override" &&
+        apiKeyAttempts < maxPassphraseRetries
+      ) {
+        apiKeyAttempts += 1;
+        provisionSpinner.stop(
+          `Passphrase rejected by OWS (attempt ${apiKeyAttempts}/${maxPassphraseRetries + 1}).`
+        );
+        const entered = await p.password({
+          message: `Retry passphrase for wallet ${resolution.walletRef}`
+        });
+        if (p.isCancel(entered) || !entered) {
+          fail("Wallet passphrase retry cancelled.");
+        }
+        resolutionPassphrase = entered as string;
+        provisionSpinner.start("Verifying wallet passphrase & provisioning OWS API key...");
+        continue;
+      }
+      provisionSpinner.stop("OWS API key provisioning failed.");
+      if (isBadPassphrase) {
+        fail(
+          resolution.source === "override"
+            ? `Passphrase rejected by OWS after ${apiKeyAttempts + 1} attempts. Rerun configure once you have the correct passphrase.`
+            : `Stored passphrase for wallet '${resolution.walletRef}' is no longer accepted by OWS. Fix ${walletMarkerPath(settings, profileId)} or rerun configure with --wallet <ref>.`
+        );
+      }
+      fail(`OWS API key provisioning failed: ${(error as Error).message}`);
+    }
+  }
+  provisionSpinner.stop("Wallet passphrase verified; OWS API key provisioned.");
+
+  if (resolution.source === "override") {
+    await writeWalletMarker(settings, profileId, {
+      walletRef: resolution.walletRef,
+      walletAddress: resolution.walletAddress,
+      passphrase: resolutionPassphrase,
+      source: "operator-provided",
+      canonicalName: resolution.canonicalName,
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  await writeTokenToOpenclawEnv(settings, tokenEnvVar, apiResult.token);
+
+  await p.note(
+    `Token written to openclaw.json env.vars.${tokenEnvVar} (rotated on every configure run).`,
+    "Token Wired"
+  );
+
   const riskProfile = requiredString(
     await p.select({
       message: "Risk profile",
@@ -850,71 +922,10 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
     "Cron Schedule"
   );
 
-  const tokenEnvVar = tokenEnvVarForProfile(settings, profileId);
-  const tokenSource: TokenSource = { kind: "env", envVar: tokenEnvVar };
-
-  const agentId = agentIdForProfile(settings, profileId);
-  const workspaceDir = workspaceDirForAgent(settings, agentId);
-
   const cronEnabled = requiredBoolean(await p.confirm({
     message: "Enable the cron job immediately?",
     initialValue: existing.profile?.cronEnabled ?? false
   }), "cron enable confirmation");
-
-  const provisionSpinner = p.spinner();
-  provisionSpinner.start("Provisioning OWS API key...");
-  let apiKeyAttempts = 0;
-  let apiResult: { token: string } | undefined;
-  let resolutionPassphrase = resolution.passphrase;
-  while (!apiResult) {
-    try {
-      apiResult = await provisionApiKey({
-        settings,
-        walletRef: resolution.walletRef,
-        keyName: `${agentId}-agent`,
-        passphrase: resolutionPassphrase
-      });
-    } catch (error) {
-      if (
-        (error as { code?: string }).code === "bad_passphrase" &&
-        resolution.source === "override" &&
-        apiKeyAttempts === 0
-      ) {
-        provisionSpinner.stop("Passphrase was rejected by OWS.");
-        apiKeyAttempts += 1;
-        const entered = await p.password({
-          message: `Retry passphrase for wallet ${resolution.walletRef}`
-        });
-        if (p.isCancel(entered) || !entered) {
-          fail("Wallet passphrase retry cancelled.");
-        }
-        resolutionPassphrase = entered as string;
-        provisionSpinner.start("Provisioning OWS API key...");
-        continue;
-      }
-      provisionSpinner.stop("OWS API key provisioning failed.");
-      fail(`OWS API key provisioning failed: ${(error as Error).message}`);
-    }
-  }
-  provisionSpinner.stop("OWS API key provisioned.");
-
-  if (resolution.source === "override") {
-    await writeWalletMarker(settings, profileId, {
-      walletRef: resolution.walletRef,
-      walletAddress: resolution.walletAddress,
-      passphrase: resolutionPassphrase,
-      source: "operator-provided",
-      canonicalName: resolution.canonicalName,
-      createdAt: new Date().toISOString()
-    });
-  }
-
-  await writeTokenToOpenclawEnv(settings, tokenEnvVar, apiResult.token);
-
-  await p.note(
-    `Token written to openclaw.json env.vars.${tokenEnvVar} (rotated on every configure run).`,
-    "Token Wired"
-  );
 
   const fundingProbe = await promptFundingGuidance(settings, wallet.walletAddress);
 

@@ -31,7 +31,6 @@ const ANSI = {
 
 function useColor(noColor: boolean): boolean {
   if (noColor) return false;
-  if (process.env.NO_COLOR) return false;
   return Boolean(process.stdout.isTTY);
 }
 
