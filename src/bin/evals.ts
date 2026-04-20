@@ -295,11 +295,17 @@ function fakeOwsDeps(respond: FakeResponder, calls: FakeCall[]) {
 }
 
 const FIXTURE_WALLET_CREATE_STDOUT = [
-  "Created wallet 3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff",
-  "  eip155:1     0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B    m/44'/60'/0'/0/0",
-  "  eip155:8453  0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B    m/44'/60'/0'/0/0",
+  "Wallet created: 3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff",
+  "Name:           morpho-vault-manager",
   "",
-  "Recovery phrase (write this down):",
+  "  eip155:1 → 0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
+  "    Path: m/44'/60'/0'/0/0",
+  "  solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp → 4bvNXrrKJMoNUbrp7GeFVZ1rfRqc481NZnguCLzV7csn",
+  "    Path: m/44'/501'/0'/0'",
+  "",
+  "⚠️  WARNING: The mnemonic below provides FULL ACCESS to this wallet.",
+  "⚠️  Store it securely offline. It will NOT be shown again.",
+  "",
   "abandon ability able about above absent absorb abstract absurd abuse access accident",
   ""
 ].join("\n");
@@ -749,16 +755,7 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
     id: "OBS-BOOT-PARSER-001",
     description: "parseOwsWalletCreateOutput handles the happy path",
     async run() {
-      const stdout = [
-        "Created wallet 3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff",
-        "  eip155:1     0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B    m/44'/60'/0'/0/0",
-        "  eip155:8453  0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B    m/44'/60'/0'/0/0",
-        "",
-        "Recovery phrase (write this down):",
-        "abandon ability able about above absent absorb abstract absurd abuse access accident",
-        ""
-      ].join("\n");
-      const parsed = parseOwsWalletCreateOutput(stdout);
+      const parsed = parseOwsWalletCreateOutput(FIXTURE_WALLET_CREATE_STDOUT);
       if ("error" in parsed) throw new Error(`unexpected parse error: ${parsed.error}`);
       assertEqual("walletRef", parsed.walletRef, "3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff");
       assertEqual(
@@ -774,8 +771,8 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
     description: "parseOwsWalletCreateOutput rejects missing mnemonic",
     async run() {
       const stdout = [
-        "Created wallet 3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff",
-        "  eip155:1     0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+        "Wallet created: 3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff",
+        "  eip155:1 → 0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
       ].join("\n");
       const parsed = parseOwsWalletCreateOutput(stdout);
       assertTrue("returned error", "error" in parsed);
@@ -794,12 +791,18 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
     description: "parseOwsWalletList extracts names and wallet refs",
     async run() {
       const stdout = [
-        "morpho-vault-manager  3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff",
-        "  eip155:1     0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
-        "  eip155:8453  0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
+        "ID:      3198bc9c-aaaa-bbbb-cccc-ddddeeeeffff",
+        "Name:    morpho-vault-manager",
+        "Secured: ✓ (encrypted)",
+        "  eip155:1 (ethereum) → 0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
+        "  eip155:8453 (base) → 0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
+        "Created: 2026-04-15T12:17:00.911670365+00:00",
         "",
-        "other-wallet  01234567-89ab-cdef-0123-456789abcdef",
-        "  eip155:1     0x0000000000000000000000000000000000000001"
+        "ID:      01234567-89ab-cdef-0123-456789abcdef",
+        "Name:    other-wallet",
+        "Secured: ✓ (encrypted)",
+        "  eip155:1 (ethereum) → 0x0000000000000000000000000000000000000001",
+        "Created: 2026-04-16T00:00:00Z"
       ].join("\n");
       const wallets = parseOwsWalletList(stdout);
       assertEqual("count", wallets.length, 2);
@@ -911,9 +914,12 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
       // Use 0x1111... because it has no letters, so its EIP-55 checksum is identical
       // to the lowercase form — avoids depending on keccak output in test fixtures.
       const listStdout = [
-        "my-wallet  01234567-89ab-cdef-0123-456789abcdef",
-        "  eip155:1     0x1111111111111111111111111111111111111111",
-        "  eip155:8453  0x1111111111111111111111111111111111111111"
+        "ID:      01234567-89ab-cdef-0123-456789abcdef",
+        "Name:    my-wallet",
+        "Secured: ✓ (encrypted)",
+        "  eip155:1 (ethereum) → 0x1111111111111111111111111111111111111111",
+        "  eip155:8453 (base) → 0x1111111111111111111111111111111111111111",
+        "Created: 2026-04-17T00:00:00Z"
       ].join("\n");
       const deps = fakeOwsDeps(({ args }) => {
         if (args[0] === "wallet" && args[1] === "list") {
@@ -988,8 +994,11 @@ const SYSTEM_SCENARIOS: SystemScenario[] = [
       const settings = makeTempSettings();
       const calls: FakeCall[] = [];
       const listStdout = [
-        "morpho-vault-manager  deadbeef-dead-dead-dead-deadbeefdead",
-        "  eip155:1     0x2222222222222222222222222222222222222222"
+        "ID:      deadbeef-dead-dead-dead-deadbeefdead",
+        "Name:    morpho-vault-manager",
+        "Secured: ✓ (encrypted)",
+        "  eip155:1 (ethereum) → 0x2222222222222222222222222222222222222222",
+        "Created: 2026-04-17T00:00:00Z"
       ].join("\n");
       const deps = fakeOwsDeps(({ args }) => {
         if (args[0] === "wallet" && args[1] === "list") {

@@ -22,7 +22,9 @@ import {
 import { runPreflightChecks } from "../lib/preflight.js";
 import {
   canonicalWalletName,
+  deleteWalletMarker,
   ensureOwsInstalled,
+  inspectWalletStatus,
   provisionApiKey,
   resolveOrCreateWallet,
   writeWalletMarker,
@@ -293,7 +295,7 @@ async function promptCronDelivery(settings: VaultManagerSettings, existing?: Vau
       message: "Cron delivery mode",
       initialValue: existing?.notifications ?? settings.defaultDeliveryMode,
       options: [
-        { value: "announce", label: "Announce run summaries", hint: "Post run summaries back through OpenClaw." },
+        { value: "announce", label: "Announce run summaries", hint: "Publish run summaries back through OpenClaw." },
         { value: "none", label: "No delivery", hint: "Keep cron runs internal only." }
       ]
     }),
@@ -603,6 +605,80 @@ async function promptCronSchedule(
 }
 
 
+async function preResolveWalletAdoption(
+  settings: VaultManagerSettings,
+  profileId: string
+): Promise<{ walletRef: string; passphrase: string } | undefined> {
+  const status = await inspectWalletStatus(settings, profileId);
+
+  if (status.kind === "marker-corrupt") {
+    const clear = requiredBoolean(
+      await p.confirm({
+        message: `Plugin wallet marker at ${status.markerPath} is unreadable (${status.error}). Delete it and re-detect the wallet?`,
+        initialValue: false
+      }),
+      "marker clear confirmation"
+    );
+    if (!clear) {
+      fail(
+        `Fix or remove ${status.markerPath} before rerunning configure. If the original wallet is still in OWS, re-run with --wallet <name>.`
+      );
+    }
+    await deleteWalletMarker(settings, profileId);
+    return preResolveWalletAdoption(settings, profileId);
+  }
+
+  if (status.kind === "marker-stale") {
+    await p.note(
+      [
+        `Plugin wallet marker points at wallet '${status.marker.walletRef}' but OWS no longer lists it.`,
+        "",
+        "Options:",
+        `  - Re-run with --wallet <existing-name-or-id> to point at a different wallet.`,
+        `  - Delete the stale marker (this does NOT delete any OWS wallet) and let configure auto-detect or create.`
+      ].join("\n"),
+      "Stale Wallet Marker"
+    );
+    const clear = requiredBoolean(
+      await p.confirm({
+        message: `Delete stale marker at ${walletMarkerPathFor(settings, profileId)} and continue?`,
+        initialValue: false
+      }),
+      "stale marker clear confirmation"
+    );
+    if (!clear) {
+      fail(`Resolve the stale wallet marker before rerunning configure.`);
+    }
+    await deleteWalletMarker(settings, profileId);
+    return preResolveWalletAdoption(settings, profileId);
+  }
+
+  if (status.kind === "no-marker-canonical-exists") {
+    const adopt = requiredBoolean(
+      await p.confirm({
+        message: `Found existing OWS wallet '${status.entry.name}' (${status.entry.evmAddress}). Adopt it for profile '${profileId}'?`,
+        initialValue: true
+      }),
+      "adopt existing wallet confirmation"
+    );
+    if (!adopt) return undefined;
+
+    const entered = await p.password({
+      message: `Passphrase for wallet ${status.entry.name}`
+    });
+    if (p.isCancel(entered) || !entered) {
+      fail("Passphrase is required to adopt the existing wallet.");
+    }
+    return { walletRef: status.entry.name, passphrase: entered as string };
+  }
+
+  return undefined;
+}
+
+function walletMarkerPathFor(settings: VaultManagerSettings, profileId: string): string {
+  return path.join(settings.dataRoot, "state", `${profileId}.wallet.json`);
+}
+
 async function resolveOverrideParams(
   context: ConfigureContext
 ): Promise<{ walletRef: string; passphrase: string } | undefined> {
@@ -642,7 +718,10 @@ export async function runConfigureFlow(context: ConfigureContext): Promise<Confi
 
   await preflight(settings);
 
-  const override = await resolveOverrideParams(context);
+  let override = await resolveOverrideParams(context);
+  if (!override) {
+    override = await preResolveWalletAdoption(settings, profileId);
+  }
   const resolution = await resolveOrCreateWallet(settings, {
     profileId,
     override

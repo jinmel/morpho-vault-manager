@@ -17,13 +17,14 @@ export async function commandExists(command: string): Promise<boolean> {
 export async function runCommand(
   command: string,
   args: string[],
-  opts?: { cwd?: string; env?: NodeJS.ProcessEnv }
+  opts?: { cwd?: string; env?: NodeJS.ProcessEnv; input?: string }
 ): Promise<CommandResult> {
   try {
     const result = await runCommandWithTimeout([command, ...args], {
       timeoutMs: 120_000,
       cwd: opts?.cwd,
-      env: opts?.env
+      env: opts?.env,
+      input: opts?.input
     });
 
     return {

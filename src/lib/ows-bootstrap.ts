@@ -8,7 +8,11 @@ import { setEnvVar } from "./openclaw.js";
 import type { VaultManagerSettings, WalletMarker } from "./types.js";
 
 export type OwsBootstrapDeps = {
-  runCommand?: (command: string, args: string[], opts?: { env?: NodeJS.ProcessEnv }) => Promise<CommandResult>;
+  runCommand?: (
+    command: string,
+    args: string[],
+    opts?: { env?: NodeJS.ProcessEnv; input?: string }
+  ) => Promise<CommandResult>;
   commandExists?: (command: string) => Promise<boolean>;
   runShell?: (scriptArgs: string[], opts?: { env?: NodeJS.ProcessEnv }) => Promise<CommandResult>;
   generatePassphrase?: () => string;
@@ -77,6 +81,76 @@ export async function deleteWalletMarker(
   }
 }
 
+export type MarkerReadResult =
+  | { kind: "ok"; marker: WalletMarker }
+  | { kind: "missing" }
+  | { kind: "corrupt"; error: string };
+
+export async function readWalletMarkerDetailed(
+  settings: VaultManagerSettings,
+  profileId: string
+): Promise<MarkerReadResult> {
+  let raw: string;
+  try {
+    raw = await readFile(walletMarkerPath(settings, profileId), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { kind: "missing" };
+    }
+    return { kind: "corrupt", error: (error as Error).message };
+  }
+  try {
+    const parsed = JSON.parse(raw) as WalletMarker;
+    if (!parsed || typeof parsed.walletRef !== "string" || typeof parsed.walletAddress !== "string") {
+      return { kind: "corrupt", error: "marker JSON is missing required walletRef or walletAddress fields" };
+    }
+    return { kind: "ok", marker: parsed };
+  } catch (error) {
+    return { kind: "corrupt", error: (error as Error).message };
+  }
+}
+
+export type WalletStatus =
+  | { kind: "marker-healthy"; marker: WalletMarker }
+  | { kind: "marker-stale"; marker: WalletMarker }
+  | { kind: "marker-corrupt"; error: string; markerPath: string }
+  | { kind: "no-marker-canonical-exists"; entry: ParsedWalletListEntry }
+  | { kind: "no-marker-no-collision" };
+
+export async function inspectWalletStatus(
+  settings: VaultManagerSettings,
+  profileId: string,
+  input?: OwsBootstrapDeps
+): Promise<WalletStatus> {
+  const d = deps(input);
+  const markerResult = await readWalletMarkerDetailed(settings, profileId);
+
+  if (markerResult.kind === "corrupt") {
+    return {
+      kind: "marker-corrupt",
+      error: markerResult.error,
+      markerPath: walletMarkerPath(settings, profileId)
+    };
+  }
+
+  const list = await d.runCommand(settings.owsCommand, ["wallet", "list"]);
+  const wallets = list.code === 0 ? parseOwsWalletList(list.stdout) : [];
+
+  if (markerResult.kind === "ok") {
+    const ref = markerResult.marker.walletRef;
+    const found = wallets.some((w) => w.walletRef === ref || w.name === ref);
+    return found
+      ? { kind: "marker-healthy", marker: markerResult.marker }
+      : { kind: "marker-stale", marker: markerResult.marker };
+  }
+
+  const canonical = canonicalWalletName(profileId);
+  const entry = wallets.find((w) => w.name === canonical && !!w.evmAddress);
+  return entry
+    ? { kind: "no-marker-canonical-exists", entry }
+    : { kind: "no-marker-no-collision" };
+}
+
 export type ParsedWalletCreate = {
   walletRef: string;
   walletAddress: `0x${string}`;
@@ -88,13 +162,13 @@ export function parseOwsWalletCreateOutput(
 ): ParsedWalletCreate | { error: string } {
   const text = stdout.replace(/\r\n/g, "\n");
 
-  const walletMatch = text.match(/Created wallet\s+([0-9a-fA-F-]{8,})/);
+  const walletMatch = text.match(/^\s*Wallet created:\s+([0-9a-fA-F-]{8,})\s*$/m);
   if (!walletMatch) {
-    return { error: "could not find 'Created wallet <uuid>' line" };
+    return { error: "could not find 'Wallet created: <uuid>' line" };
   }
   const walletRef = walletMatch[1];
 
-  const evmMatch = text.match(/eip155:\d+\s+(0x[0-9a-fA-F]{40})\b/);
+  const evmMatch = text.match(/\beip155:\d+[^\n]*?(0x[0-9a-fA-F]{40})/);
   if (!evmMatch) {
     return { error: "could not find eip155 address row" };
   }
@@ -105,16 +179,12 @@ export function parseOwsWalletCreateOutput(
     return { error: `invalid EVM address: ${evmMatch[1]}` };
   }
 
-  const mnemonicMatch = text.match(
-    /(?:mnemonic|recovery phrase)[^\n]*\n+((?:[a-z]+\s+){11,23}[a-z]+)/i
+  const mnemonicLineMatch = text.match(
+    /^(?:[a-z]+(?:\s+[a-z]+){11}|[a-z]+(?:\s+[a-z]+){23})\s*$/m
   );
-  const mnemonic = mnemonicMatch ? mnemonicMatch[1].trim().replace(/\s+/g, " ") : "";
+  const mnemonic = mnemonicLineMatch ? mnemonicLineMatch[0].trim().replace(/\s+/g, " ") : "";
   if (!mnemonic) {
     return { error: "could not find mnemonic block (did you pass --show-mnemonic?)" };
-  }
-  const wordCount = mnemonic.split(/\s+/).length;
-  if (wordCount !== 12 && wordCount !== 24) {
-    return { error: `mnemonic word count ${wordCount} is not 12 or 24` };
   }
 
   return { walletRef, walletAddress, mnemonic };
@@ -130,31 +200,32 @@ export function parseOwsWalletList(stdout: string): ParsedWalletListEntry[] {
   const text = stdout.replace(/\r\n/g, "\n");
   const entries: ParsedWalletListEntry[] = [];
 
-  const blockRegex =
-    /(^|\n)\s*([A-Za-z0-9][\w.-]*)\s+\(?([0-9a-fA-F-]{8,})\)?[^\n]*\n((?:\s+eip155:\d+\s+0x[0-9a-fA-F]{40}[^\n]*\n?)+)/g;
+  const headerRegex = /^ID:\s+([0-9a-fA-F-]{8,})\s*$/gm;
+  const headers: { start: number; walletRef: string }[] = [];
+  let h: RegExpExecArray | null;
+  while ((h = headerRegex.exec(text)) !== null) {
+    headers.push({ start: h.index, walletRef: h[1] });
+  }
 
-  let match: RegExpExecArray | null;
-  while ((match = blockRegex.exec(text)) !== null) {
-    const name = match[2];
-    const walletRef = match[3];
-    const addrMatch = match[4].match(/eip155:\d+\s+(0x[0-9a-fA-F]{40})/);
+  for (let i = 0; i < headers.length; i++) {
+    const startIdx = headers[i].start;
+    const endIdx = i + 1 < headers.length ? headers[i + 1].start : text.length;
+    const block = text.slice(startIdx, endIdx);
+
+    const nameMatch = block.match(/^Name:\s+(.+?)\s*$/m);
+    if (!nameMatch) continue;
+
+    const evmMatch = block.match(/\beip155:\d+[^\n]*?(0x[0-9a-fA-F]{40})/);
     let evmAddress: `0x${string}` | undefined;
-    if (addrMatch) {
+    if (evmMatch) {
       try {
-        evmAddress = getAddress(addrMatch[1]);
+        evmAddress = getAddress(evmMatch[1]);
       } catch {
         evmAddress = undefined;
       }
     }
-    entries.push({ name, walletRef, evmAddress });
-  }
 
-  if (entries.length === 0) {
-    const lineRegex = /^\s*([A-Za-z0-9][\w.-]*)\s+([0-9a-fA-F-]{8,})\b/gm;
-    let lm: RegExpExecArray | null;
-    while ((lm = lineRegex.exec(text)) !== null) {
-      entries.push({ name: lm[1], walletRef: lm[2] });
-    }
+    entries.push({ name: nameMatch[1], walletRef: headers[i].walletRef, evmAddress });
   }
 
   return entries;
@@ -347,7 +418,7 @@ export async function provisionApiKey(
   const result = await d.runCommand(
     params.settings.owsCommand,
     ["key", "create", "--name", params.keyName, "--wallet", params.walletRef],
-    { env: { ...process.env, OWS_PASSPHRASE: params.passphrase } }
+    { input: `${params.passphrase}\n` }
   );
 
   if (result.code !== 0) {

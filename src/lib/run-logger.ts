@@ -34,11 +34,13 @@ export type RunLogger = {
 
 const SENSITIVE_KEY_REGEX = /token|secret|passphrase|mnemonic|private[_-]?key|signature/i;
 const OWS_KEY_VALUE_REGEX = /\bows_key_[A-Za-z0-9_-]{8,}/g;
-const WALLET_CREATE_ECHO_REGEX = /Created wallet[\s\S]*?(?:\n\s*\n|$)/i;
+const WALLET_CREATE_ECHO_REGEX = /(?:Wallet created:|Created wallet)[\s\S]*?(?:\n\s*\n|$)/i;
+const MNEMONIC_LINE_REGEX = /^(?:[a-z]+(?:\s+[a-z]+){11}|[a-z]+(?:\s+[a-z]+){23})\s*$/gm;
 
 function redactString(value: string): string {
   let next = value.replace(OWS_KEY_VALUE_REGEX, "ows_key_***");
   next = next.replace(WALLET_CREATE_ECHO_REGEX, "[redacted wallet create output]");
+  next = next.replace(MNEMONIC_LINE_REGEX, "[redacted mnemonic]");
   return next;
 }
 
