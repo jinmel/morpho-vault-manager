@@ -118,6 +118,17 @@ Show profile, workspace, cron, and token status. Accepts `--json` for machine-re
 
 Loads the profile from disk, checks whether the cron job is known to the gateway, and probes the configured token source for readiness. Displays wallet address, risk config, schedule, delivery target, model preference, last funded check, and last validation run.
 
+#### `show`
+
+Visualize the current onchain exposure for the profile's wallet. Reads from the Morpho GraphQL API (`https://api.morpho.org/graphql`) rather than the local morpho-cli subprocess so that it can surface the market-level allocations behind each vault position. Accepts `--json`, `--address <hex>` to inspect an address other than the profile wallet, `--chain-id <n>` to target a non-Base chain, `--endpoint <url>` to point at an alternate GraphQL endpoint, and `--no-color` to disable ANSI styling.
+
+Output (non-JSON mode) has three sections:
+1. **Header** — owner address, chain id, vault count, total USD supplied.
+2. **Vault exposure** — one row per vault position with supplied USD, share of total, a unicode bar, and net APY.
+3. **Market exposure per vault** — for each vault, a per-market table showing the vault's allocation to each underlying Morpho market (collateral / loan pair, LLTV, vault→market supply USD, share of vault TVL, and the user's pro-rata share of that market).
+
+Rendering uses the `table` (gajus) npm package for ANSI-aware column layout, with unicode block characters (`█▉▊▋▌▍▎▏`) generated in-process for exposure bars. This is a read-only view. It does not sign, broadcast, or mutate profile state. Empty positions render as `No vault positions.` without failing.
+
 #### `plan`
 
 Compute a deterministic rebalance plan without executing any transactions. Accepts `--json`.

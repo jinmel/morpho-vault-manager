@@ -9,6 +9,7 @@ import {
   showStatus
 } from "./configure.js";
 import { runHistory } from "./history.js";
+import { runShow } from "./show.js";
 import { runTeardown, runTeardownAll } from "./teardown.js";
 import type { PlanStatus } from "../lib/rebalance.js";
 import type { CliLogger, VaultManagerSettings } from "../lib/types.js";
@@ -70,6 +71,35 @@ export function registerVaultManagerCli({ program, logger, settings }: RegisterC
     .action(async (opts: { profile: string; json: boolean }) => {
       await showStatus(settings, opts.profile, opts.json);
     });
+
+  vaultManager
+    .command("show")
+    .description("Visualize current vault exposure and underlying market allocations via Morpho GraphQL")
+    .option("--profile <id>", "Profile id (wallet address is read from this profile)", "default")
+    .option("--address <hex>", "Override the wallet address to inspect (bypasses the profile)")
+    .option("--chain-id <n>", "EVM chain id (default 8453 Base)", (value) => Number.parseInt(value, 10))
+    .option("--endpoint <url>", "Override Morpho GraphQL endpoint")
+    .option("--json", "Emit the raw GraphQL-derived payload as JSON", false)
+    .option("--no-color", "Disable ANSI color output", false)
+    .action(
+      async (opts: {
+        profile: string;
+        address?: string;
+        chainId?: number;
+        endpoint?: string;
+        json: boolean;
+        color: boolean;
+      }) => {
+        await runShow(settings, {
+          profile: opts.profile,
+          address: opts.address,
+          chainId: opts.chainId,
+          endpoint: opts.endpoint,
+          json: opts.json,
+          noColor: opts.color === false
+        });
+      }
+    );
 
   vaultManager
     .command("allocate")
