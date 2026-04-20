@@ -125,6 +125,12 @@
       "notes": "Added minimumPositionUsd to RiskPreset (conservative: $100, balanced: $50, aggressive: $25). allocateTargets in rebalance.ts now zeroes out positions below the minimum and redistributes their amounts to remaining vaults. Template documents the minimum position size."
     },
     {
+      "id": "show_subcommand_visualization",
+      "status": "completed",
+      "path": "src/cli/show.ts",
+      "notes": "Added a read-only `vault-manager show` subcommand that fetches the profile wallet's Morpho positions via the Morpho GraphQL API (https://api.morpho.org/graphql) and renders vault exposure plus per-vault market allocations on the terminal. Table layout uses the `table` (gajus) npm package for ANSI-aware column width + wrapping correctness; unicode block bars (`█▉▊▋▌▍▎▏`) are generated in-process. Supports --json, --address override, --chain-id, --endpoint, --no-color. Verified live against Base (chain id 8453) with a populated whale address (2 vaults, 14 markets rendered) and with an unknown address (graceful empty render). GraphQL client at src/lib/morpho-graphql.ts handles the `No results matching given parameters` error shape as an empty result set."
+    },
+    {
       "id": "configure_wizard_automation",
       "status": "completed",
       "path": "docs/SPEC.md",
